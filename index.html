@@ -1270,10 +1270,10 @@ const SKIN_SURF = `
   vec3 sc=col*mix(.95,.88+.24*S.w,dt)*(.68+.4*smoothstep(0.,.7,S.x)); sc=mix(sc,sc*vec3(1.1,.95,.8)+uComp*.04,smoothstep(.55,1.,S.w)*.5*dt);
   sc*=.82+.3*grime; float scar=smoothstep(.62,.7,fbm(vec2(arc*2.3,around*11.))); sc=mix(sc,sc*1.5+.03,scar*.35*dt);
   sc=mix(sc,sc*vec3(1.25,1.2,.85)+.015,S.y*.3*dt);
-  vec3 skinC=col*vec3(.42,.34,.3)+uPrimal*.03; float cover=mix(.85,smoothstep(.03,.4,S.x),dt); col=mix(skinC,sc,cover);
+  vec3 skinC=uPrimal*(.62+.3*n3)*vec3(1.,.97,.95)+col*.12; float cover=mix(.85,smoothstep(.03,.4,S.x),dt); col=mix(skinC,sc,cover);
   float wr=smoothstep(.55,.95,abs(sin(arc*9.+n1*4.)))*smoothstep(.2,.7,belly); col*=1.-.22*wr;
   vec3 Vv=normalize(uCam-vW); float nv0=clamp(dot(N,Vv),0.,1.); float fr0=pow(1.-nv0,3.);
-  alb=col; N=bumpN(N,vW,H,.8+.5*uRuf); rough=clamp(.5-.28*S.y*dt+.14*(n3-.5),.15,.9); spec=.55+.6*S.y*dt; ao=mix(.85,.5+.5*smoothstep(0.,.55,S.x),dt);
+  alb=col; N=bumpN(N,vW,H,.8+.5*uRuf); rough=clamp(.5-.28*S.y*dt+.14*(n3-.5),.15,.9); spec=.55+.6*S.y*dt; ao=mix(.85,.66+.34*smoothstep(0.,.55,S.x),dt);
   alb=mix(alb,vec3(.9,.05,.02),uHurt*.5);
   float nl=dot(N,uSunDir); float wrap=clamp((nl+.4)/1.4,0.,1.)-max(nl,0.);
   float gap=1.-smoothstep(0.,.6,S.x); float neckW=smoothstep(2.2,1.,z); float zone=max(bp,neckW*.85);
