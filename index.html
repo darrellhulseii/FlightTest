@@ -400,12 +400,13 @@ float hash12(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33)
 float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hash12(i),hash12(i+vec2(1,0)),f.x),mix(hash12(i+vec2(0,1)),hash12(i+vec2(1,1)),f.x),f.y); }
 float fbm(vec2 p){ float a=.5,s=0.; for(int i=0;i<5;i++){ s+=a*vnoise(p); p=p*2.03+vec2(17.1,9.2); a*=.5; } return s; }
 `;
-const VERT = (hook, defs) => `#version 300 es
+const VERT = (hook, defs, vdecl) => `#version 300 es
 precision highp float;
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNrm; layout(location=2) in vec2 aUV; layout(location=3) in vec4 aCol; layout(location=4) in vec4 aExt;
 layout(location=5) in mat4 aModel; layout(location=9) in vec4 aInst;
-uniform mat4 uVP; uniform mat4 uModel;
+uniform mat4 uVP; uniform mat4 uModel; uniform sampler2D uTexA; uniform sampler2D uTexB;
 ${GLSL_COMMON}
+${vdecl || ''}
 out vec3 vW; out vec3 vN; out vec3 vL; out vec3 vLN; out vec2 vUV; out vec4 vCol; out vec4 vExt; out vec4 vInst;
 void main(){
   vec3 lp=aPos; vec3 ln=aNrm;
@@ -417,7 +418,7 @@ void main(){
 const FRAG_HEAD = `#version 300 es
 precision highp float; precision highp sampler2DShadow;
 in vec3 vW; in vec3 vN; in vec3 vL; in vec3 vLN; in vec2 vUV; in vec4 vCol; in vec4 vExt; in vec4 vInst;
-uniform sampler2DShadow uShadow; uniform sampler2D uTexA; uniform sampler2D uTexB; uniform float uBurnGlow;
+uniform sampler2DShadow uShadow; uniform sampler2D uTexA; uniform sampler2D uTexB; uniform float uBurnGlow; uniform float uSnowCov; uniform float uWet;
 ${GLSL_COMMON}
 layout(location=0) out vec4 oColor;
 float shadowAt(vec3 wp){
@@ -465,7 +466,7 @@ class Engine {
     this.q = { shadow: 2048, msaa: 4, bloom: true, scale: 1 };
     this.G = { // global uniforms
       uVP: new Float32Array(16), uLightVP: new Float32Array(16), uCam: [0, 0, 0], uSunDir: [0, 1, 0], uSunCol: [1, 1, 1], uSkyAmb: [.3, .3, .4], uGndAmb: [.1, .1, .1],
-      uFogCol: [.5, .5, .6], uFogSun: [.8, .7, .5], uFogDen: .0006, uTime: 0, uPL: new Float32Array(24), uPLC: new Float32Array(18), uShadowOn: 1, uBurnGlow: 0,
+      uFogCol: [.5, .5, .6], uFogSun: [.8, .7, .5], uFogDen: .0006, uTime: 0, uPL: new Float32Array(24), uPLC: new Float32Array(18), uShadowOn: 1, uBurnGlow: 0, uSnowCov: 0, uWet: 0,
     };
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.enable(gl.CULL_FACE);
     gl.vertexAttrib4f(3, 1, 1, 1, 1); gl.vertexAttrib4f(4, 0, 0, 0, 0); gl.vertexAttrib4f(9, 0, 0, 0, 0);
@@ -490,7 +491,7 @@ void main(){
   float sh=shadowAt(vW+N*.15);
   oColor=vec4(shade(alb,N,rough,spec,emis,vW,sh,ao),alpha);
 }`;
-    const mat = { name, prog: this.link(VERT(m.hook, defs), fs, name), depth: this.link(VERT(m.hook, defs + ' DEPTH'), FRAG_DEPTH, name + '_d'), tex: m.tex || {}, uni: m.uni || {}, cull: m.cull === undefined ? true : m.cull, blend: m.blend, noShadow: m.noShadow };
+    const mat = { name, prog: this.link(VERT(m.hook, defs, m.vdecl), fs, name), depth: this.link(VERT(m.hook, defs + ' DEPTH', m.vdecl), FRAG_DEPTH, name + '_d'), tex: m.tex || {}, uni: m.uni || {}, cull: m.cull === undefined ? true : m.cull, blend: m.blend, noShadow: m.noShadow };
     return mat;
   }
   program(name, vs, fs) { const p = this.link(vs, fs, name); return p; }
@@ -582,7 +583,7 @@ void main(){
 void main(){ vec3 s=pre(texture(uT,uv+uTexel*vec2(-1,-1)).rgb)+pre(texture(uT,uv+uTexel*vec2(1,-1)).rgb)+pre(texture(uT,uv+uTexel*vec2(-1,1)).rgb)+pre(texture(uT,uv+uTexel*vec2(1,1)).rgb); o=vec4(min(s*.25,vec3(60.)),1); }`, 'down0');
     this.pDown = this.link(vs, hd + `void main(){ vec3 s=texture(uT,uv+uTexel*vec2(-1,-1)).rgb+texture(uT,uv+uTexel*vec2(1,-1)).rgb+texture(uT,uv+uTexel*vec2(-1,1)).rgb+texture(uT,uv+uTexel*vec2(1,1)).rgb; o=vec4(s*.25,1); }`, 'down');
     this.pUp = this.link(vs, hd + `void main(){ vec3 s=texture(uT,uv+uTexel*vec2(-1,-1)).rgb+2.*texture(uT,uv+uTexel*vec2(0,-1)).rgb+texture(uT,uv+uTexel*vec2(1,-1)).rgb+2.*texture(uT,uv+uTexel*vec2(-1,0)).rgb+4.*texture(uT,uv).rgb+2.*texture(uT,uv+uTexel*vec2(1,0)).rgb+texture(uT,uv+uTexel*vec2(-1,1)).rgb+2.*texture(uT,uv+uTexel*vec2(0,1)).rgb+texture(uT,uv+uTexel*vec2(1,1)).rgb; o=vec4(s/16.*.9,1); }`, 'up');
-    this.pComp = this.link(vs, hd + `uniform float uBloom; uniform float uExp; uniform float uDmg; uniform float uTime; uniform float uAber; uniform vec3 uTint; uniform float uSpeed; uniform vec3 uSun; uniform vec3 uRayCol; uniform float uRays; uniform float uGrade;
+    this.pComp = this.link(vs, hd + `uniform float uBloom; uniform float uRain; uniform float uSnowV; uniform float uExp; uniform float uDmg; uniform float uTime; uniform float uAber; uniform vec3 uTint; uniform float uSpeed; uniform vec3 uSun; uniform vec3 uRayCol; uniform float uRays; uniform float uGrade;
 vec3 aces(vec3 x){ return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.); }
 float lum(vec3 c){ return dot(c,vec3(.2126,.7152,.0722)); }
 void main(){
@@ -595,6 +596,12 @@ void main(){
   vec2 tx=1./vec2(textureSize(uT,0)); vec3 bl4=(texture(uT,uv+vec2(tx.x,0)).rgb+texture(uT,uv-vec2(tx.x,0)).rgb+texture(uT,uv+vec2(0,tx.y)).rgb+texture(uT,uv-vec2(0,tx.y)).rgb)*.25;
   vec3 dd=clamp(col-bl4,vec3(-.6),vec3(.6)); col+=dd*.32;
   // screen-space god rays from the sun
+  if(uRain>.001){ float rs=0.; float hvr=uRain*uRain; float hk=smoothstep(.3,.85,uRain); for(int k=0;k<3;k++){ float fk=float(k); float px=(uv.x+uv.y*.28*hvr)*(120.+fk*80.)*(1.15-.35*uRain+.2*fk*uRain); float cx=floor(px), fx=fract(px); float h=fract(sin(cx*12.9898+fk*78.233)*43758.5453); float y=fract(uv.y*(1.5+fk*.7)+uTime*(1.7+fk*.8+h*.8)+h*7.); float wd=smoothstep(.5,.4+.04*uRain,abs(fx-.5))*(.5+.5*uRain); rs+=wd*step(y,.07+.12*uRain)*(1.-y/(.07+.12*uRain))*step(.9-.4*uRain-.1*hvr,h)*(1.-.22*fk); }
+    vec3 rc=mix(vec3(.52,.74,.97),vec3(.6,.67,.77),hk); col+=rc*rs*(.3+.35*uRain);
+    float misty=smoothstep(.1,.0,abs(uv.y-.15)-.2); col=mix(col,col*vec3(.9,.95,1.02)+vec3(.05,.06,.07)*misty*uRain,uRain*.3);
+    float Lr=dot(col,vec3(.33)); col=mix(col,vec3(Lr)*mix(vec3(.9,1.0,1.12),vec3(.9,.96,1.06),hk),uRain*(.08+.34*hk)); col*=mix(vec3(.94,1.0,1.08),vec3(1.),hk*.8); }
+  if(uSnowV>.02){ float sn=0.; for(int k=0;k<4;k++){ float fk=float(k); float ca=cos(.35+fk*.6), sa=sin(.35+fk*.6); vec2 q=vec2(ca*uv.x-sa*uv.y,sa*uv.x+ca*uv.y); vec2 g=q*vec2(18.+fk*17.,11.+fk*10.)+vec2(uTime*(.35+fk*.3+uSnowV*uSnowV*2.6)+sin(uTime*.6+fk*2.)*.5,-uTime*(.5+fk*.28)+sin(uTime*.9+q.x*5.+fk)*.18*(1.+uSnowV)); vec2 ci=floor(g), cf=fract(g)-.5; float hh=fract(sin(dot(ci+fk*7.31,vec2(12.9898,78.233)))*43758.5453); vec2 off=(vec2(fract(hh*17.)-.5,fract(hh*31.)-.5))*.55; float rad=(.035+.11*fract(hh*7.7))*(1.4-.25*fk); float dofw=mix(1.,.45,step(fk,.5)); float d=length(cf-off); sn+=smoothstep(rad,rad*(.15+.5*step(fk,.5)),d)*step(.5-.3*uSnowV,hh)*(.9-.17*fk)*dofw; }
+    col=mix(col,vec3(.93,.96,1.),clamp(sn*.6*uSnowV,0.,.7)); float rw=floor(uv.y*90.+uTime*.4), hr=fract(sin(rw*12.9898)*43758.5453); float sheet=smoothstep(.55,.9,1.-abs(fract(uv.x*1.5-uTime*(1.4+2.6*uSnowV)+hr*7.)-.5)*2.)*step(.82,hr); col=mix(col,vec3(.92,.95,1.),sheet*uSnowV*uSnowV*uSnowV*.35); col=mix(col,vec3(.8,.86,.95),uSnowV*uSnowV*.2); }
   if(uRays>.001 && uSun.z>.001){ vec2 dl=(uSun.xy-uv); float len=length(dl); vec2 st=dl/16.*clamp(.9,0.,1.); vec2 p=uv; vec3 ray=vec3(0.); float w=1.; float jit=fract(sin(dot(uv*vec2(913.,517.),vec2(12.9898,78.233)))*43758.5453);
     p+=st*jit; for(int i=0;i<16;i++){ p+=st; vec3 sm=texture(uT,p).rgb; float l=lum(sm); ray+=sm*smoothstep(1.3,3.2,l)*w; w*=.93; }
     float fall=exp(-len*1.9); col+=ray/16.*uRayCol*uRays*uSun.z*fall*2.2; }
@@ -637,7 +644,7 @@ void main(){
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     const p = this.pComp; this.use(p); gl.uniform1i(this.loc(p, 'uT'), 3); gl.uniform1i(this.loc(p, 'uT2'), 4); this.bindTex(3, this.scene.t); this.bindTex(4, useBloom ? bl[0].t : this.whiteTex);
-    this.setU(p, { uBloom: useBloom ? post.bloom : 0, uExp: post.exp, uDmg: post.dmg, uTime: this.G.uTime % 100, uAber: post.aber, uTint: post.tint, uSpeed: post.speed || 0, uSun: post.sun || [.5, .5, 0], uRayCol: post.rayCol || [1, .8, .6], uRays: post.rays || 0, uGrade: post.grade === undefined ? 1 : post.grade });
+    this.setU(p, { uBloom: useBloom ? post.bloom : 0, uRain: post.rain || 0, uSnowV: post.snowV || 0, uExp: post.exp, uDmg: post.dmg, uTime: this.G.uTime % 100, uAber: post.aber, uTint: post.tint, uSpeed: post.speed || 0, uSun: post.sun || [.5, .5, 0], uRayCol: post.rayCol || [1, .8, .6], uRays: post.rays || 0, uGrade: post.grade === undefined ? 1 : post.grade });
     this.fsDraw(); gl.depthMask(true); gl.enable(gl.DEPTH_TEST); this.cur = null;
   }
 }
@@ -752,14 +759,14 @@ const BIOMES = {
   FIRE: { name: 'Emberlands', az: 2.0, el: .09, sunCol: '#ff6c2a', sunI: 3.2, zen: '#220c1c', mid: '#7a2a2e', hor: '#ff5e2c', amb: '#8a4036', gnd: '#2a1a16', fog: '#a8402c', fogSun: '#ff8a40', fogDen: .00062, cloud: { cover: .7, lit: '#ff8a50', shade: '#2e1220', h: 800 }, exp: 1.15,
     grass: ['#5e3a24', '#7a4a28'], dry: '#8a3e22', rock: '#2e2624', snow: null, dirt: '#4a3226', crop: ['#8a5a28', '#6a3a22', '#4a2c22'], tree: 'dead', treeCols: ['#2a201c', '#3a2a22', '#4a2a1e'], pine: .3, water: ['#201414', '#6a2a1a'], hasWater: false, relief: 1.25, trees: .35, roofs: ['#5a3a30', '#3e3a3e'] },
 };
-const WS = 3200;
+const WS = 9000, WF = WS / 3200; // the world is ~8x the area it used to be
 
 class World {
   constructor(eng, biomeKey, q, seedStr) {
     this.eng = eng; this.B = BIOMES[biomeKey]; this.key = biomeKey; this.q = q; const seed = hashStr(seedStr);
     this.seedStr = seedStr; this.rnd = mulberry32(seed); this.noise = makeNoise(seed ^ 0x9e3779b9); this.N = q.terrainN; this.cell = WS / this.N; this.waterLevel = this.B.hasWater ? 2 : -999;
     const r = this.rnd; this.rv = { a: 240 + r() * 80, b: 70 + r() * 50, p: r() * 6, q: r() * 6, c: (r() - .5) * 300 };
-    this.lake = { x: (r() < .5 ? -1 : 1) * (500 + r() * 200), z: (r() - .5) * 900 };
+    this.lake = { x: (r() < .5 ? -1 : 1) * (500 + r() * 200) * 1.6, z: (r() - .5) * 900 * 1.6 };
     this.layoutVillages(); this.buildHeights(); this.finishVillages(); this.buildSlopeGrid(); this.paintSplat(); this.buildTerrain(); this.buildWater(); this.buildSkyAndLight();
     this.buildLava(); this.buildVeg(); this.buildBuildings(); this.buildPeople();
   }
@@ -768,7 +775,7 @@ class World {
     const n = this.noise, B = this.B, r = Math.hypot(x, z);
     let h = 30 + n.fbm(x * .0014 + 3.1, z * .0014 + 7.7, 5) * 95 * B.relief + n.fbm(x * .006, z * .006, 3) * 14;
     const fm = this.feat ? this.featMask(x, z) : 0, ow = 1 - fm;
-    const bowl = smooth(800, 1450, r); h += ow * (bowl * (110 + 520 * n.ridged(x * .0011 + 9, z * .0011 - 4, 4) * (.6 + .4 * bowl)) + Math.pow(bowl, 1.3) * 200 * B.relief);
+    const bowl = smooth(800 * WF, 1450 * WF, r); h += ow * (bowl * (110 + 520 * n.ridged(x * .0011 + 9, z * .0011 - 4, 4) * (.6 + .4 * bowl)) + Math.pow(bowl, 1.3) * 200 * B.relief);
     if (this.feat) h += this.featH(x, z);
     if (B.hasWater) {
       const d = Math.abs(x - this.riverX(z)); h = lerp(h, this.waterLevel - 4, smooth(80, 20, d) * ow);
@@ -792,29 +799,50 @@ class World {
   }
   featH(x, z) { return this.snowContrib(x, z) + this.volContrib(x, z); }
   snowW(x, z) { const s = this.feat.snow; return 1 - smooth(.7, 1.25, Math.hypot(x - s.x, z - s.z) / s.R); }
+  rainW(x, z) { // rain belt on the approach to the snow hill, plus a few drifting storm cells; everywhere else stays dry
+    const s = this.feat.snow, d = Math.hypot(x - s.x, z - s.z) / s.R;
+    if (!this.storms) { const rr = mulberry32(hashStr('storm' + this.seedStr)); this.storms = []; for (let i = 0; i < 11; i++) { const a = rr() * TAU, dd = (200 + rr() * 1100) * WF; this.storms.push({ x: Math.cos(a) * dd, z: Math.sin(a) * dd, R: 280 + rr() * 260, vx: (rr() - .5) * 5, vz: (rr() - .5) * 5, ph: rr() * 6 }); } }
+    const t = this.wt(); if (t < 0) return 0; let cell = 0; for (let i = 0; i < this.storms.length; i++) { const c = this.storms[i], en = this.envAt(t, 230 + i * 47, c.ph * 60, .72); const px = c.x + Math.sin(t * .006 * (1 + Math.abs(c.vx) * .1) + c.ph) * 260, pz = c.z + Math.cos(t * .005 * (1 + Math.abs(c.vz) * .1) + c.ph) * 260, dc = Math.hypot(x - px, z - pz) / c.R; cell = Math.max(cell, (1 - smooth(.55, 1, dc)) * en); }
+    const belt = (1 - smooth(1.55, 2.45, d)) * (.3 + .7 * this.envAt(t, 300, 40, .8));
+    const vq = this.feat.vol, noVol = smooth(1.7, 2.8, Math.hypot(x - vq.x, z - vq.z) / vq.R); // never rains near the volcano
+    return Math.max(belt, cell) * noVol * (1 - this.snowW(x, z)) * (1 - this.ashW(x, z)) * (1 - this.snowEv(x, z)) * (1 - this.ashEv(x, z)); }
+  // weather timeline: slow build, heavy peak, lighter spell, then it stops; p cycles through [0,1)
+  wt() { return (this.eng.G.uTime || 0) - (this.t0 || 0) - 180; } // weather events begin 3 minutes after a flight starts
+  envAt(t, period, off, frac) { if (t < 0) return 0; const p = ((t + off) / period) % 1; if (p > frac) return 0; const q = p / frac, K = [[0, 0], [.45, .5], [.6, 1], [.7, .9], [.82, .3], [.92, .22], [1, 0]]; for (let i = 1; i < K.length; i++) if (q <= K[i][0]) { const a = K[i - 1], b = K[i], u = smooth(0, 1, (q - a[0]) / (b[0] - a[0])); return a[1] + (b[1] - a[1]) * u; } return 0; }
+  snowLineH() { return this.B.snow ? Math.min(this.B.snow, 200) : this.B.tree === 'dead' ? 1e9 : 200; } // snow only settles on high ground
+  snowEv(x, z) { const SL = this.snowLineH(); if (SL > 1e8) return 0; return .8 * this.envAt(this.wt(), 420, 150, .42) * smooth(SL - 25, SL + 45, this.heightAt(x, z)); } // snow spells fall only over high ground
+  ashEv(x, z) { const v = this.feat.vol; return .7 * this.envAt(this.wt(), 540, 330, .36) * (1 - smooth(1.1, 2.6, Math.hypot(x - v.x, z - v.z) / v.R)); } // ash spells drift only over the volcano's region // rain belt on the approach to the snow hill
   ashW(x, z) { const v = this.feat.vol; return 1 - smooth(.8, 1.75, Math.hypot(x - v.x, z - v.z) / v.R); }
   addFeatures() {
     const E = this.villages.slice(), rf = mulberry32(hashStr('feat' + this.seedStr)), gap = (px, pz) => Math.min(...E.map(v => Math.hypot(px - v.cx, pz - v.cz) - v.R)), bad = (px, pz, R) => (this.B.hasWater && Math.abs(px - this.riverX(pz)) < R + 130) || (this.B.lake && Math.hypot(px - this.lake.x, pz - this.lake.z) < R + 440);
     const a0 = rf() * TAU; let best = -1e9, sa = 0;
-    for (let k = 0; k < 90; k++) { const a = a0 + k / 90 * TAU, c = Math.cos(a), s = Math.sin(a), px = c * 1020, pz = s * 1020; let sc = gap(c * 1050, s * 1050); if (bad(px, pz, 140)) sc -= 800; if (sc > best) { best = sc; sa = a; } }
+    for (let k = 0; k < 90; k++) { const a = a0 + k / 90 * TAU, c = Math.cos(a), s = Math.sin(a), px = c * 1020 * WF, pz = s * 1020 * WF; let sc = gap(c * 1050 * WF, s * 1050 * WF); if (bad(px, pz, 140)) sc -= 800; if (sc > best) { best = sc; sa = a; } }
     const sc = Math.cos(sa), ss = Math.sin(sa);
-    const snow = { x: sc * 1050, z: ss * 1050, R: 620, H: 300, hx: sc * 1240, hz: ss * 1240, Rh: 240, HH: 430 };
+    const snow = { x: sc * 1050 * WF, z: ss * 1050 * WF, R: 640, H: 400, hx: sc * 1240 * WF, hz: ss * 1240 * WF, Rh: 250, HH: 540 };
     best = -1e9; let va = 0; const sp = [snow.x - sc * 30, snow.z - ss * 30];
-    for (let k = 0; k < 90; k++) { const a = a0 + .5 + k / 90 * TAU, c = Math.cos(a), s = Math.sin(a), vx = c * 700, vz = s * 700; let sc2 = Math.min(gap(vx, vz) * 1.2, gap(c * 1170, s * 1170), Math.hypot(c * 1170 - snow.x, s * 1170 - snow.z) - 520, Math.hypot(vx - sp[0], vz - sp[1]) - 300); if (bad(vx, vz, 160)) sc2 -= 800; if (sc2 > best) { best = sc2; va = a; } }
+    for (let k = 0; k < 90; k++) { const a = a0 + .5 + k / 90 * TAU, c = Math.cos(a), s = Math.sin(a), vx = c * (1170 * WF - 470), vz = s * (1170 * WF - 470); let sc2 = Math.min(gap(vx, vz) * 1.2, gap(c * 1170 * WF, s * 1170 * WF), Math.hypot(c * 1170 * WF - snow.x, s * 1170 * WF - snow.z) - 520, Math.hypot(vx - sp[0], vz - sp[1]) - 300); if (bad(vx, vz, 160)) sc2 -= 800; if (sc2 > best) { best = sc2; va = a; } }
     const vc = Math.cos(va), vs = Math.sin(va);
-    this.feat = { snow, vol: { x: vc * 1170, z: vs * 1170, R: 520, H: 370, d0: .17, depth: 105 } };
-    this.villages.push({ name: 'Frostholm', kind: 3, sfx: 'S', R: 125, cx: sp[0], cz: sp[1], h: 0, buildings: [], idx: this.villages.length, razed: false, pct: 0, maxH: 700 });
-    this.villages.push({ name: 'Cinderhold', kind: 4, sfx: 'V', R: 135, cx: vc * 700, cz: vs * 700, h: 0, buildings: [], idx: this.villages.length, razed: false, pct: 0, maxH: 700 });
+    this.feat = { snow, vol: { x: vc * 1170 * WF, z: vs * 1170 * WF, R: 520, H: 370, d0: .17, depth: 105 } };
+    this.villages.push({ name: 'Frostholm', kind: 3, sfx: 'S', R: 250, cx: sp[0], cz: sp[1], h: 0, buildings: [], idx: this.villages.length, razed: false, pct: 0, maxH: 700 });
+    this.villages.push({ name: 'Cinderhold', kind: 4, sfx: 'V', R: 270, cx: vc * (1170 * WF - 470), cz: vs * (1170 * WF - 470), h: 0, buildings: [], idx: this.villages.length, razed: false, pct: 0, maxH: 700 });
   }
   flatH(x, z) { let h = this.baseH(x, z); for (const v of this.villages) { const d = Math.hypot(x - v.cx, z - v.cz), w = 1 - smooth(v.R * .9, v.R * 1.75, d); if (w > 0) h = lerp(h, v.h, w); } return h; }
   layoutVillages() {
-    const r = this.rnd, rot = r() * TAU, defs = [['Ashford', 0, 105, 330, -250], ['Stonebridge', 1, 175, 430, 160], ['Highkeep', 2, 195, -180, 560]];
+    const r = this.rnd, rot = r() * TAU, defs = [['Ashford', 0, 235, 330 * WF, -250 * WF], ['Stonebridge', 1, 390, 430 * WF, 160 * WF], ['Highkeep', 2, 435, -180 * WF, 560 * WF]]; // towns are ~5x the area they used to be
     this.villages = defs.map(([name, kind, R, x, z], i) => {
       const c = Math.cos(rot), s = Math.sin(rot); let cx = (x * c - z * s) + (r() - .5) * 80, cz = (x * s + z * c) + (r() - .5) * 80;
       if (this.B.hasWater) { const dx = cx - this.riverX(cz); if (Math.abs(dx) < R + 110) cx += (dx < 0 ? -1 : 1) * (R + 120 - Math.abs(dx)); }
       if (this.B.lake) { const dl = Math.hypot(cx - this.lake.x, cz - this.lake.z); if (dl < 420) { cx += (cx - this.lake.x) / dl * (430 - dl); cz += (cz - this.lake.z) / dl * (430 - dl); } }
       return { name, kind, R, cx, cz, h: 0, buildings: [], idx: i, razed: false, pct: 0 };
     });
+    { // extra towns scattered over the wider world
+      const names = ['Millbrook', 'Oakreach', 'Ravenmoor', 'Thornwick', 'Saltmarsh', 'Dunmere'], kinds = [0, 1, 0, 1, 0, 0];
+      for (let i = 0; i < names.length; i++) { const kind = kinds[i], R = kind === 1 ? 330 + r() * 60 : 200 + r() * 55;
+        for (let tr = 0; tr < 400; tr++) { const a = r() * TAU, d = 700 + r() * 1500, x = Math.cos(a) * d, z = Math.sin(a) * d;
+          if (this.B.hasWater && Math.abs(x - this.riverX(z)) < R + 170) continue; if (this.B.lake && Math.hypot(x - this.lake.x, z - this.lake.z) < R + 520) continue;
+          if (this.villages.some(v => Math.hypot(x - v.cx, z - v.cz) < R + v.R + 380)) continue;
+          let hs = 0, hx = 0; for (let k = 0; k < 8; k++) { const q = this.baseH(x + Math.cos(k * .785) * R * .6, z + Math.sin(k * .785) * R * .6); hs += q; hx = Math.max(hx, q); } if (hx > 62 || hs / 8 < 14) continue;
+          this.villages.push({ name: names[i], kind, R, cx: x, cz: z, h: 0, buildings: [], idx: this.villages.length, razed: false, pct: 0 }); break; } } }
     this.seedStr = this.seedStr || 'x'; this.addFeatures();
     for (const v of this.villages) { let s = 0; for (let k = 0; k < 6; k++) { const a = k / 6 * TAU; s += this.baseH(v.cx + Math.cos(a) * v.R * .5, v.cz + Math.sin(a) * v.R * .5); } v.h = clamp((s / 6 + this.baseH(v.cx, v.cz)) / 2, this.waterLevel + 9, v.maxH || 70); }
   }
@@ -827,7 +855,7 @@ class World {
     return (H[k] * (1 - u) + H[k + 1] * u) * (1 - v) + (H[k + n1] * (1 - u) + H[k + n1 + 1] * u) * v;
   }
   slopeAt(x, z) { if (this.slopeGrid) { const N = this.sgN, fx = (x / WS + .5) * (N - 1), fz = (z / WS + .5) * (N - 1), i = clamp(Math.round(fx), 0, N - 1), j = clamp(Math.round(fz), 0, N - 1); return this.slopeGrid[j * N + i]; } return this.slopeRaw(x, z); }
-  buildSlopeGrid() { const N = this.sgN = 512; this.slopeGrid = null; const g = new Float32Array(N * N); for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) g[j * N + i] = this.slopeRaw((i / (N - 1) - .5) * WS, (j / (N - 1) - .5) * WS); this.slopeGrid = g; }
+  buildSlopeGrid() { const N = this.sgN = 768; this.slopeGrid = null; const g = new Float32Array(N * N); for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) g[j * N + i] = this.slopeRaw((i / (N - 1) - .5) * WS, (j / (N - 1) - .5) * WS); this.slopeGrid = g; }
   slopeRaw(x, z) { const e = 6; return Math.hypot(this.heightAt(x + e, z) - this.heightAt(x - e, z), this.heightAt(x, z + e) - this.heightAt(x, z - e)) / (2 * e); }
   roadDist(x, z) { let m = 1e9; for (const s of this.roadSegs) { const dx = s[2] - s[0], dz = s[3] - s[1], l2 = dx * dx + dz * dz, t = clamp(((x - s[0]) * dx + (z - s[1]) * dz) / l2, 0, 1), d = Math.hypot(x - s[0] - dx * t, z - s[1] - dz * t); if (d < m) m = d; } return m; }
   nearVillage(x, z, pad) { for (const v of this.villages) if (Math.hypot(x - v.cx, z - v.cz) < v.R * pad) return v; return null; }
@@ -865,9 +893,9 @@ class World {
       this.add(v, 'church', v.cx + (rg() - .5) * 12, v.cz + (rg() - .5) * 12, rg() * TAU, 1);
       if (v.layout === 'grid') { const HS = R * .84, ga = v.ga, ca = Math.cos(ga), sa = Math.sin(ga); const C = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => [v.cx + (i * ca - j * sa) * HS, v.cz + (i * sa + j * ca) * HS]);
         for (let i = 0; i < 4; i++) { const p0 = C[i], p1 = C[(i + 1) % 4]; this.add(v, 'tower', p0[0], p0[1], ga + i * Math.PI / 2, 1.1, { ballista: i % 2 === 0 });
-          for (let k = 0; k < 4; k++) { const t0 = k / 4, t1 = (k + 1) / 4, x0 = p0[0] + (p1[0] - p0[0]) * t0, z0 = p0[1] + (p1[1] - p0[1]) * t0, x1 = p0[0] + (p1[0] - p0[0]) * t1, z1 = p0[1] + (p1[1] - p0[1]) * t1; if (!nearRoad((x0 + x1) / 2, (z0 + z1) / 2, 11)) this.addWall(v, x0, z0, x1, z1); } }
+          const ns = Math.max(4, Math.round(Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / 38)); for (let k = 0; k < ns; k++) { if (k > 0 && k % 4 === 0) this.add(v, 'tower', p0[0] + (p1[0] - p0[0]) * k / ns, p0[1] + (p1[1] - p0[1]) * k / ns, ga, .9, { ballista: false }); const t0 = k / ns, t1 = (k + 1) / ns, x0 = p0[0] + (p1[0] - p0[0]) * t0, z0 = p0[1] + (p1[1] - p0[1]) * t0, x1 = p0[0] + (p1[0] - p0[0]) * t1, z1 = p0[1] + (p1[1] - p0[1]) * t1; if (!nearRoad((x0 + x1) / 2, (z0 + z1) / 2, 11)) this.addWall(v, x0, z0, x1, z1); } }
       } else for (let i = 0; i < 4; i++) { const a = rg() * TAU, d = R * (.7 + rg() * .35); this.add(v, 'tower', v.cx + Math.cos(a) * d, v.cz + Math.sin(a) * d, a, 1, { ballista: i % 2 === 0 }); }
-    } else { this.add(v, 'tower', v.cx + R * .75, v.cz - R * .2, 1, 1, { ballista: true }); }
+    } else { this.add(v, 'tower', v.cx + R * .75, v.cz - R * .2, 1, 1, { ballista: true }); for (let i = 0; i < 2; i++) { const a = rg() * TAU, d = R * (.5 + rg() * .4); this.add(v, 'tower', v.cx + Math.cos(a) * d, v.cz + Math.sin(a) * d, a, 1, { ballista: i === 0 }); } }
     // houses on rings
     const kinds = ['cottageA', 'cottageB', 'cottageA', 'longhouse', 'cottageB'], big = v.kind === 2 || v.kind === 4;
     const cands = []; // [x, z, yaw]
@@ -883,7 +911,7 @@ class World {
       if (rg() < .4) this.add(v, 'hay', x + Math.cos(yaw) * 6 + (rg() - .5) * 3, z - Math.sin(yaw) * 6 + (rg() - .5) * 3, 0, .9 + rg() * .3, { minor: true });
     }
     // farm outskirts
-    const farms = v.kind === 0 ? 3 : v.kind >= 3 ? 2 : 4; for (let i = 0; i < farms; i++) { const a = rg() * TAU, d = R * (1.15 + rg() * .35), x = v.cx + Math.cos(a) * d, z = v.cz + Math.sin(a) * d; if (free(x, z, 10) && !nearRoad(x, z, 8) && !(this.B.hasWater && this.heightAt(x, z) < this.waterLevel + 3)) { this.add(v, 'barn', x, z, rg() * TAU, 1.05); for (let k = 0; k < 3; k++) this.add(v, 'hay', x + (rg() - .5) * 26, z + (rg() - .5) * 26, 0, 1, { minor: true }); } }
+    const farms = (v.kind === 0 ? 3 : v.kind >= 3 ? 2 : 4) * 3; for (let i = 0; i < farms; i++) { const a = rg() * TAU, d = R * (1.15 + rg() * .35), x = v.cx + Math.cos(a) * d, z = v.cz + Math.sin(a) * d; if (free(x, z, 10) && !nearRoad(x, z, 8) && !(this.B.hasWater && this.heightAt(x, z) < this.waterLevel + 3)) { this.add(v, 'barn', x, z, rg() * TAU, 1.05); for (let k = 0; k < 3; k++) this.add(v, 'hay', x + (rg() - .5) * 26, z + (rg() - .5) * 26, 0, 1, { minor: true }); } }
     if (v.kind < 2 || v.kind === 2 && false) { const a = v.rad[1] + .6, d = R * 1.25, x = v.cx + Math.cos(a) * d, z = v.cz + Math.sin(a) * d; if (!(this.B.hasWater && this.heightAt(x, z) < this.waterLevel + 3)) this.add(v, 'windmill', x, z, a, 1); }
     this.add(v, 'well', v.cx + (v.kind === 2 ? 20 : v.kind === 4 ? 14 : 11), v.cz + 9, 0, 1, { minor: true });
     for (let k = 0; k < 6; k++) { const a = k / 6 * TAU + v.ga, x = v.cx + Math.cos(a) * (18 + rg() * 8), z = v.cz + Math.sin(a) * (18 + rg() * 8); if (v.kind < 2 && free(x, z, 3) && !nearRoad(x, z, 4)) this.add(v, 'stall', x, z, a + Math.PI / 2, 1, { minor: true }); }
@@ -901,10 +929,10 @@ class World {
       const x = (px / S - .5) * WS, z = (py / S - .5) * WS, h = this.heightAt(x, z), sl = this.slopeAt(x, z);
       const n1 = nz.fbm(x * .012, z * .012, 3) * .5 + .5, n2 = nz.fbm(x * .0035 + 40, z * .0035, 3) * .5 + .5;
       let col = m(g0, g1, smooth(.3, .7, n1)); col = m(col, dry, smooth(.45, .75, n2) * .65);
-      col = m(col, rock, smooth(.38, .75, sl + (n1 - .5) * .25)); if (B.snow) col = m(col, snow, smooth(B.snow - 30, B.snow + 50, h + (n1 - .5) * 60) * (1 - smooth(.55, 1.0, sl)));
+      col = m(col, rock, smooth(.38, .75, sl + (n1 - .5) * .25)); { const SL = this.snowLineH(); if (SL < 1e8) col = m(col, snow, smooth(SL - 30, SL + 50, h + (n1 - .5) * 60) * (1 - smooth(.55, 1.0, sl) * .8)); }
       if (this.B.hasWater) col = m(col, sand, smooth(this.waterLevel + 3.5, this.waterLevel + .5, h) * .9);
       { const F = this.feat, sc = this.snowContrib(x, z), sH = F.snow.H, rockiness = smooth(.45, 1.0, sl + (n1 - .5) * .3);
-        const sn = Math.max(smooth(.08 * sH, .34 * sH, sc + (n1 - .5) * 40) * (1 - smooth(.62, 1.15, sl) * .85), smooth(0, .1 * sH, sc) * .3 * (1 - rockiness));
+        const sw = this.snowW(x, z), sn = Math.max(smooth(.02 * sH, .16 * sH, sc + (n1 - .5) * 40) * (1 - smooth(1.1, 2.2, sl) * .5), smooth(.25, .6, sw + (n1 - .5) * .2) * (1 - smooth(1.2, 2.4, sl) * .4) * .97, smooth(0, .1 * sH, sc) * .3 * (1 - rockiness));
         if (sc > 2) { col = m(col, [92, 96, 104], smooth(.15, .6, sl) * smooth(0, .15 * sH, sc) * .8); col = m(col, icy, sn * (.82 + .18 * n2)); }
         const q = F.vol, vd = Math.hypot(x - q.x, z - q.z) / q.R, vm = 1 - smooth(.7, 1.5, vd + (n1 - .5) * .14);
         if (vm > 0) { let vc = m(ashA, ashB, smooth(.3, .8, n2 + (1 - vd) * .4)); vc = m(vc, rust, smooth(.55, .8, n1) * .3 * (1 - smooth(.15, .6, vd))); col = m(col, vc, vm * .93); } }
@@ -958,8 +986,12 @@ class World {
         float nf2=1.-smoothstep(50.,230.,length(vW-uCam)); alb*=mix(1.,.7+.4*clamp(strata,0.,1.5),cliff*.8*nf2); N=bumpN(N,vW,strata*.5*cliff*nf2,.7);
         float bri=dot(base,vec3(.3333)), mx=max(base.r,max(base.g,base.b)), mn=min(base.r,min(base.g,base.b)); float snowy=smoothstep(.66,.84,bri)*(1.-smoothstep(.1,.28,(mx-mn)/max(mx,.01)));
         float spk=pow(hash12(floor(vW.xz*22.)+floor(uTime*.6+hash12(floor(vW.xz*22.))*5.)),48.); emis+=uSunCol*spk*snowy*nearF*.9; spec=mix(spec,.2,snowy); rough=mix(rough,.55,snowy);
+        { float drift=fbm(vec2(dot(vW.xz,vec2(.82,.57))*.16,dot(vW.xz,vec2(-.57,.82))*.9)), rip=fbm(vW.xz*.55+drift*4.); N=bumpN(N,vW,(rip*.45+drift*.9)*snowy,.3*nearF+.08);
+          alb=mix(alb,alb*vec3(.9,.95,1.06),snowy*.55); emis+=alb*uSkyAmb*snowy*(.75+.35*(1.-clamp(dot(N,uSunDir),0.,1.)))*vec3(.92,.98,1.1);
+          float sp2=pow(hash12(floor(vW.xz*60.)+floor(uTime*1.3+hash12(floor(vW.xz*60.))*7.)),90.); emis+=uSunCol*sp2*snowy*nearF*3.; }
         float grass=smoothstep(.02,.1,base.g-max(base.r,base.b)); alb*=1.+grass*nearF*(.28*(hash12(floor(vW.xz*3.2))-.5)+.2*(vnoise(vW.xz*.9)-.5));
-        float blade=vnoise(vec2(vW.x*7.+vW.z*2.,vW.z*34.)), wind=sin(vW.x*.06+vW.z*.035+uTime*.9+vnoise(vW.xz*.05)*3.)*.5+.5; float gpat=fbm(vW.xz*.035+4.); alb*=1.+grass*nearF*(.3*(blade-.5)+.06*wind); alb=mix(alb,alb*vec3(1.22,1.1,.7)+.012,grass*smoothstep(.55,.8,gpat)*.5); alb*=1.+grass*.12*(gpat-.5); }
+        float blade=vnoise(vec2(vW.x*7.+vW.z*2.,vW.z*34.)), wind=sin(vW.x*.06+vW.z*.035+uTime*.9+vnoise(vW.xz*.05)*3.)*.5+.5; float gpat=fbm(vW.xz*.035+4.); { float cv=uSnowCov*smoothstep(.4,.8,Ng.y+.15*(vnoise(vW.xz*.8)-.5))*(1.-smoothstep(.1,.5,grass)*.0); alb=mix(alb,vec3(.88,.92,.98)*(.94+.1*vnoise(vW.xz*2.)),cv*.93); rough=mix(rough,.55,cv); N=bumpN(N,vW,cv*(vnoise(vW.xz*.7)*.5),.25*nearF); alb*=1.-.3*uWet*(1.-cv); rough=mix(rough,.28,uWet*(1.-cv)*.8); spec=mix(spec,.32,uWet*(1.-cv)); }
+        alb*=1.+grass*nearF*(.3*(blade-.5)+.06*wind); alb=mix(alb,alb*vec3(1.22,1.1,.7)+.012,grass*smoothstep(.55,.8,gpat)*.5); alb*=1.+grass*.12*(gpat-.5); }
       { vec2 q=vW.xz-uVol.xy; float r=length(q); float ang=atan(q.y,q.x); float fo=smoothstep(uVol.w*.9,uVol.w*1.1,r)*(1.-smoothstep(uVol.z*.3,uVol.z*.66,r));
         float st=pow(.5+.5*cos(ang*5.+fbm(q*.011)*7.),7.); float lv=fo*st*smoothstep(.38,.66,fbm(q*.018+7.)); float cr=fbm(q*.09+uTime*.015);
         alb=mix(alb,vec3(.025,.02,.02),clamp(lv*1.6,0.,1.)); emis+=vec3(2.6,.7,.1)*lv*(.3+.9*smoothstep(.35,.8,cr))*(.8+.3*sin(uTime*1.7+r*.05)); }` });
@@ -971,7 +1003,7 @@ class World {
       emis=mix(vec3(3.4,.95,.15),vec3(.22,.04,.01),cr)*(.8+.35*sin(t*1.8+n*9.)); rough=.7; spec=.1; N=bumpN(N,vW,n*.4,.3);` });
   }
   buildWater() {
-    if (!this.B.hasWater) return; const e = this.eng, M = 200, c = WS / M, P = [], U = [], D = []; const idx = [], dep = new Float32Array((M + 1) * (M + 1));
+    if (!this.B.hasWater) return; const e = this.eng, M = 360, c = WS / M, P = [], U = [], D = []; const idx = [], dep = new Float32Array((M + 1) * (M + 1));
     for (let j = 0; j <= M; j++) for (let i = 0; i <= M; i++) { const x = -WS / 2 + i * c, z = -WS / 2 + j * c; dep[j * (M + 1) + i] = this.waterLevel - this.heightAt(x, z); P.push(x, this.waterLevel, z); U.push(clamp(dep[j * (M + 1) + i], -3, 14), 0); }
     for (let j = 0; j < M; j++) for (let i = 0; i < M; i++) { const a = j * (M + 1) + i, b = a + 1, cc = a + M + 1, d = cc + 1; if (Math.max(dep[a], dep[b], dep[cc], dep[d]) < -1.5) continue; idx.push(a, cc, b, b, cc, d); }
     if (!idx.length) return; const nrm = new Float32Array(P.length / 3 * 3); for (let i = 0; i < nrm.length; i += 3) nrm[i + 1] = 1;
@@ -1011,22 +1043,23 @@ void main(){
     this.wSnow = 0; this.wAsh = 0;
   }
   // blend the global atmosphere toward a blizzard (ws) or an ash-choked red sky (wa)
-  applyWeather(ws, wa) {
+  applyWeather(ws, wa, wr) {
     const G = this.eng.G, b = this.wb, S = this.sky, mx = (o, a, c, t) => { for (let i = 0; i < 3; i++) o[i] = a[i] + (c[i] - a[i]) * t; return o; };
     const snow = { fog: lin('#c9d6e6'), fogSun: lin('#eef2f8'), zen: lin('#6f7f94'), mid: lin('#9aa8b8'), hor: lin('#c4ced9'), cl: lin('#e6edf5'), cs: lin('#7d8a9a'), amb: lin('#a9b8cc') };
     const ash = { fog: lin('#4a2218'), fogSun: lin('#ff7a30'), zen: lin('#140808'), mid: lin('#3c1410'), hor: lin('#c4401a'), cl: lin('#ff7a3a'), cs: lin('#120a0a'), amb: lin('#7a3a2a') };
+    wr = clamp(wr || 0, 0, 1); const rainL = { fog: lin('#a9cbe8'), fogSun: lin('#d6e6f2'), zen: lin('#4f86c6'), mid: lin('#86b4dc'), hor: lin('#bfdcf1'), cl: lin('#dbe8f5'), cs: lin('#7392b4'), amb: lin('#8db4da') }, rainH = { fog: lin('#66778a'), fogSun: lin('#8c99a8'), zen: lin('#38465a'), mid: lin('#566679'), hor: lin('#808d9c'), cl: lin('#838f9e'), cs: lin('#3d4859'), amb: lin('#667789') }, rk = smooth(.3, .85, wr), rain = {}; for (const k in rainL) rain[k] = mx([0, 0, 0], rainL[k], rainH[k], rk);
     const t = { fogCol: b.fogCol, fogSun: b.fogSun, zen: b.zen, mid: b.mid, hor: b.hor, cl: b.cl, cs: b.cs, amb: b.skyAmb };
     ws = clamp(ws, 0, 1); wa = clamp(wa, 0, 1); const apply = (w, W) => { if (w <= 0) return; t.fogCol = mx([0, 0, 0], t.fogCol, W.fog, w); t.fogSun = mx([0, 0, 0], t.fogSun, W.fogSun, w); t.zen = mx([0, 0, 0], t.zen, W.zen, w); t.mid = mx([0, 0, 0], t.mid, W.mid, w); t.hor = mx([0, 0, 0], t.hor, W.hor, w); t.cl = mx([0, 0, 0], t.cl, W.cl, w); t.cs = mx([0, 0, 0], t.cs, W.cs, w); t.amb = mx([0, 0, 0], t.amb, W.amb, w); };
-    apply(ws, snow); apply(wa, ash);
-    G.uFogCol = t.fogCol; G.uFogSun = t.fogSun; G.uFogDen = b.fogDen * (1 + 3.2 * ws + 2.2 * wa); G.uSkyAmb = t.amb.map((v, i) => v * (.9 + .2 * ws)); 
-    G.uSunCol = b.sunCol.map((v, i) => v * (1 - .6 * ws - .42 * wa) * (i === 0 ? 1 + .15 * wa : i === 2 ? 1 - .25 * wa : 1));
-    S.uZen = t.zen; S.uMid = t.mid; S.uHor = t.hor; S.uCL = t.cl; S.uCS = t.cs; S.uCover = lerp(b.cover, .97, Math.max(ws, wa * .9));
-    this.exposure = b.exp * (1 + .06 * ws); this.wSnow = ws; this.wAsh = wa;
+    apply(Math.pow(wr, .6) * .92, rain); apply(ws, snow); apply(wa, ash);
+    G.uFogCol = t.fogCol; G.uFogSun = t.fogSun; G.uFogDen = b.fogDen * (1 + 3.2 * ws + 2.2 * wa + 1.6 * wr); G.uSkyAmb = t.amb.map((v, i) => v * (.9 + .2 * ws)); 
+    G.uSunCol = b.sunCol.map((v, i) => v * (1 - .6 * ws - .42 * wa - .5 * wr) * (i === 0 ? 1 + .15 * wa : i === 2 ? 1 - .25 * wa : 1));
+    S.uZen = t.zen; S.uMid = t.mid; S.uHor = t.hor; S.uCL = t.cl; S.uCS = t.cs; S.uCover = lerp(b.cover, .97, Math.max(ws, wa * .9, wr * .96));
+    this.exposure = b.exp * (1 + .06 * ws); this.wRain = wr; this.wSnow = ws; this.wAsh = wa;
   }
   drawSky(cam) { const e = this.eng, gl = e.gl, p = this.skyProg; gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); e.use(p); e.setU(p, { uCam: e.G.uCam, uSunDir: e.G.uSunDir, uSunCol: e.G.uSunCol, uTime: e.G.uTime }); e.setU(p, this.sky); e.setU(p, { uInvVP: cam.invVP }); e.fsDraw(); gl.enable(gl.DEPTH_TEST); e.lastGlobalProg = null; }
 
   buildVeg() {
-    const e = this.eng, B = this.B, r = mulberry32(hashStr('veg' + this.villages[1].cx)), nz = this.noise, treeN = Math.floor(this.q.trees * B.trees);
+    const e = this.eng, B = this.B, r = mulberry32(hashStr('veg' + this.villages[1].cx)), nz = this.noise, treeN = Math.floor(this.q.trees * B.trees * 2.4);
     const pine = new GB(), broad = new GB(), dead = new GB(), rock = new GB(); const tc = B.treeCols.map(lin), trunk = lin('#4a3524');
     // pine
     pine.cyl(0, 0, 0, .55, .3, .9, 7, trunk, [6, 0]); pine.cyl(0, .8, 0, .32, .18, 3.6, 7, trunk, [6, 0]); const pr = mulberry32(21);
@@ -1041,7 +1074,7 @@ void main(){
     const rockMesh = rock.build(e);
     const kinds = { pine: [], broad: [], dead: [] }; this.treeGrid = new Map(); const gs = 24;
     let tries = 0; while (tries < treeN * 5 && (kinds.pine.length + kinds.broad.length + kinds.dead.length) < treeN) {
-      tries++; const a = r() * TAU, d = Math.sqrt(r()) * 1450, x = Math.cos(a) * d, z = Math.sin(a) * d, h = this.heightAt(x, z);
+      tries++; const a = r() * TAU, d = Math.sqrt(r()) * 1450 * WF, x = Math.cos(a) * d, z = Math.sin(a) * d, h = this.heightAt(x, z);
       if (h < this.waterLevel + 2.5 || h > (B.snow ? B.snow + 30 : 330) || this.slopeAt(x, z) > .55) continue;
       const dens = smooth(-.15, .35, nz.fbm(x * .004 + 50, z * .004, 3)) * (1 - smooth(B.snow ? 70 : 260, B.snow ? 170 : 340, h)); if (r() > dens) continue;
       if (this.roadDist(x, z) < 9) continue; if (this.nearVillage(x, z, 1.15)) continue; if (this.snowContrib(x, z) > 95 || this.volContrib(x, z) > 18 || this.ashW(x, z) > .6) continue; let bad = false; for (const v of this.villages) for (const b of v.buildings) if (!b.minor && Math.hypot(x - b.x, z - b.z) < b.r + 4) { bad = true; break; } if (bad) continue;
@@ -1053,20 +1086,38 @@ void main(){
       arr.forEach((t, i) => { M4.rotY(M.subarray(i * 16, i * 16 + 16), t.yaw, [t.x, t.y, t.z], t.s * (k === 'pine' ? 1.15 : 1)); I[i * 4] = t.ph; I[i * 4 + 1] = 0; I[i * 4 + 2] = t.tint; t.mesh = k; t.i = i; this.trees.push(t); const key = Math.floor(t.x / gs) + ',' + Math.floor(t.z / gs); (this.treeGrid.get(key) || this.treeGrid.set(key, []).get(key)).push(t); });
       e.instances(mesh, M, I, arr.length); this.treeMeshes.push({ k, mesh, I, n: arr.length, dirty: false }); }
     this.treeMat = e.material('tree', { defs: ['INST'], hook: `float sw=sin(uTime*1.4+aInst.x*3.)*lp.y*lp.y*.0035*${B.tree === 'dead' ? '0.3' : '1.0'}; lp.x+=sw; lp.z+=sw*.6;`, surf: `
-      float n=vnoise(vL.xz*2.7+vL.y*1.9); alb=vCol.rgb*(.7+.5*vInst.z)*(.78+.45*n)*(.82+.36*hash12(floor(vL.xz*5.+vL.y*4.))); alb*=.8+.3*smoothstep(0.,6.,vL.y); alb=mix(alb,vec3(.018,.014,.012),vInst.y); ao=.5+.5*smoothstep(.2,3.2,vL.y); rough=.85; spec=.12; { vec3 Vv=normalize(uCam-vW); float tr=pow(max(dot(-Vv,uSunDir),0.),2.5)*(1.-vInst.y)*.55*(.4+.6*smoothstep(.5,3.5,vL.y)); emis+=alb*uSunCol*tr*.35; } emis+=vec3(1.9,.5,.1)*vInst.y*step(.01,vInst.y)*(1.-vInst.y)*2.*vnoise(vL.xz*4.+uTime*3.);` });
-    // grass tufts: undergrowth beside trees and meadow around villages
-    { const gt = new GB(), gr = mulberry32(55), gc = B.grass.map(lin);
-      for (let b = 0; b < 7; b++) { const a = b / 7 * TAU + gr() * .6, lean = .25 + gr() * .35, h = .55 + gr() * .55, w = .07, bx = Math.cos(a) * .12, bz = Math.sin(a) * .12, px = -Math.sin(a), pz = Math.cos(a); let prev = [[bx - px * w, 0, bz - pz * w], [bx + px * w, 0, bz + pz * w]];
-        for (let k = 1; k <= 3; k++) { const f = k / 3, ww = w * (1 - f * .92), o = lean * f * f * h, cx = bx + Math.cos(a) * o, cz = bz + Math.sin(a) * o, y = h * f, nx = [[cx - px * ww, y, cz - pz * ww], [cx + px * ww, y, cz + pz * ww]], sh = .55 + .7 * f, c = [(gc[0][0] * (1 - f) + gc[1][0] * f) * sh, (gc[0][1] * (1 - f) + gc[1][1] * f) * sh * 1.05, (gc[0][2] * (1 - f) + gc[1][2] * f) * sh]; gt.tri(prev[0], prev[1], nx[0], c, [8, 0], [0, 1, 0]); gt.tri(prev[1], nx[1], nx[0], c, [8, 0], [0, 1, 0]); prev = nx; } }
-      const gmesh = gt.build(e), gp = []; const gN = Math.floor(this.q.trees * (B.tree === 'dead' ? .5 : 1.3));
-      const place = (x, z) => { const h = this.heightAt(x, z); if (h < this.waterLevel + 1.6 || h > (B.snow ? B.snow : 300) || this.slopeAt(x, z) > .6 || this.roadDist(x, z) < 5 || this.snowContrib(x, z) > 60 || this.volContrib(x, z) > 10 || this.ashW(x, z) > .5) return; for (const v of this.villages) for (const b of v.buildings) if (!b.minor && Math.hypot(x - b.x, z - b.z) < b.r + 1.5) return; gp.push([x, h - .05, z, .8 + gr() * 1.1, gr() * TAU]); };
-      for (const t of this.trees) { for (let i = 0; i < 2 && gp.length < gN; i++) { const a = gr() * TAU, d = 2 + gr() * 6; place(t.x + Math.cos(a) * d, t.z + Math.sin(a) * d); } }
-      for (const v of this.villages) { if (v.kind >= 3 && B.snow) continue; for (let i = 0, n = 0; i < 4000 && n < gN * .12; i++) { const a = gr() * TAU, d = Math.sqrt(gr()) * v.R * 1.5, l = gp.length; place(v.cx + Math.cos(a) * d, v.cz + Math.sin(a) * d); if (gp.length > l) n++; } }
-      if (gp.length) { const GM = new Float32Array(gp.length * 16), GI = new Float32Array(gp.length * 4); gp.forEach((q, i) => { M4.rotY(GM.subarray(i * 16, i * 16 + 16), q[4], [q[0], q[1], q[2]], q[3] * 1.3, q[3] * (.8 + gr() * .6), q[3] * 1.3); GI[i * 4] = gr() * 6; GI[i * 4 + 2] = gr(); }); e.instances(gmesh, GM, GI, gp.length); this.treeMeshes.push({ k: 'grass', mesh: gmesh, I: GI, n: gp.length, dirty: false }); }
-      this.grassMat = e.material('grass', { defs: ['INST'], hook: `float sw=(sin(uTime*2.1+aInst.x*3.+lp.x*5.)*.6+sin(uTime*3.3+lp.z*7.)*.4)*lp.y*lp.y*.22; lp.x+=sw; lp.z+=sw*.7;`, surf: `alb=vCol.rgb*(.75+.5*vInst.z)*(.8+.3*vnoise(vW.xz*3.)); ao=.45+.55*smoothstep(0.,.5,vL.y); rough=.8; spec=.1; { vec3 Vv=normalize(uCam-vW); float tr=pow(max(dot(-Vv,uSunDir),0.),2.)*smoothstep(.1,.9,vL.y); emis+=alb*uSunCol*tr*.5; }` }); }
+      float n=vnoise(vL.xz*2.7+vL.y*1.9); alb=vCol.rgb*(.7+.5*vInst.z)*(.78+.45*n)*(.82+.36*hash12(floor(vL.xz*5.+vL.y*4.))); alb*=.8+.3*smoothstep(0.,6.,vL.y); { float cv=uSnowCov*smoothstep(.05,.5,vLN.y+.3*(n-.5))*smoothstep(.8,2.5,vL.y)*(1.-vInst.y); alb=mix(alb,vec3(.88,.92,.98)*(.9+.15*n),cv*.9); alb*=1.-.22*uWet; } ${B.snow ? `{ float sc=smoothstep(.1,.5,vLN.y+.3*(n-.5))*smoothstep(1.2,3.,vL.y)*(1.-vInst.y); alb=mix(alb,vec3(.88,.92,.98)*(.9+.15*n),sc*.9); rough=.7; }` : ''} alb=mix(alb,vec3(.018,.014,.012),vInst.y); ao=.5+.5*smoothstep(.2,3.2,vL.y); rough=.85; spec=.12; { vec3 Vv=normalize(uCam-vW); float tr=pow(max(dot(-Vv,uSunDir),0.),2.5)*(1.-vInst.y)*.55*(.4+.6*smoothstep(.5,3.5,vL.y)); emis+=alb*uSunCol*tr*.35; } emis+=vec3(1.9,.5,.1)*vInst.y*step(.01,vInst.y)*(1.-vInst.y)*2.*vnoise(vL.xz*4.+uTime*3.);` });
+    // real grass: a camera-centred lattice of blade tufts, wrapped around the camera and planted on the terrain mesh in the vertex shader
+    { const gt = new GB(), gr = mulberry32(55), nB = 8;
+      for (let b = 0; b < nB; b++) { const a = b / nB * TAU + gr() * .7, rr = .03 + gr() * .13, bx = Math.cos(a) * rr, bz = Math.sin(a) * rr, la = a + (gr() - .5) * 1.4, lean = .25 + gr() * .8, h = .6 + gr() * .75, w = .055 + gr() * .03, px = -Math.sin(la), pz = Math.cos(la), dx = Math.cos(la), dz = Math.sin(la);
+        const P = [[bx - px * w, 0, bz - pz * w], [bx + px * w, 0, bz + pz * w], [bx + dx * lean * h * .12 - px * w * .8, h * .55, bz + dz * lean * h * .12 - pz * w * .8], [bx + dx * lean * h * .12 + px * w * .8, h * .55, bz + dz * lean * h * .12 + pz * w * .8], [bx + dx * lean * h * .62, h * .96, bz + dz * lean * h * .62]], up = [0, 1, 0], ex = [8, 0];
+        gt.tri(P[0], P[1], P[2], [1, 1, 1], ex, up); gt.tri(P[1], P[3], P[2], [1, 1, 1], ex, up); gt.tri(P[2], P[3], P[4], [1, 1, 1], ex, up); }
+      const gmesh = gt.build(e), hq = this.q.trees, GR = hq > 5000 ? 56 : hq > 2500 ? 44 : 32, gc0 = hq > 5000 ? .5 : hq > 2500 ? .58 : .72, gn = Math.round(2 * GR / gc0), gcell = 2 * GR / gn, gN = gn * gn;
+      const GM = new Float32Array(gN * 16), GI = new Float32Array(gN * 4); for (let j = 0, n = 0; j < gn; j++) for (let i = 0; i < gn; i++, n++) { const o = n * 16; GM[o] = GM[o + 5] = GM[o + 10] = GM[o + 15] = 1; GM[o + 12] = -GR + (i + gr()) * gcell; GM[o + 14] = -GR + (j + gr()) * gcell; GI[n * 4] = gr(); GI[n * 4 + 1] = gr(); GI[n * 4 + 2] = gr(); GI[n * 4 + 3] = gr(); }
+      e.instances(gmesh, GM, GI, gN); this.grassMesh = gmesh;
+      let hmin = 1e9, hmax = -1e9; for (const v of this.hmap) { if (v < hmin) hmin = v; if (v > hmax) hmax = v; } const n1 = this.N + 1, HD = new Uint8Array(n1 * n1 * 4);
+      for (let k = 0; k < n1 * n1; k++) { const q = Math.round((this.hmap[k] - hmin) / (hmax - hmin) * 65535); HD[k * 4] = q >> 8; HD[k * 4 + 1] = q & 255; HD[k * 4 + 3] = 255; }
+      const hTex = e.texData(HD, n1, n1); const gl = e.gl; gl.bindTexture(gl.TEXTURE_2D, hTex); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const f1 = (v) => v.toFixed(5);
+      this.grassMat = e.material('grass', { defs: ['INST'], tex: { A: hTex, B: this.splatTex }, noShadow: true, cull: false, uni: { uGH: [hmin, hmax, this.cell, this.N], uGP: [this.waterLevel, GR, 0, 0] },
+        vdecl: `uniform vec4 uGH; uniform vec4 uGP;
+float gdec(ivec2 p){ vec4 t=texelFetch(uTexA,clamp(p,ivec2(0),ivec2(int(uGH.w))),0); return mix(uGH.x,uGH.y,(floor(t.r*255.+.5)*256.+floor(t.g*255.+.5))/65535.); }
+float gheight(vec2 p){ float fx=clamp((p.x+${WS / 2}.)/uGH.z,0.,uGH.w-.001), fz=clamp((p.y+${WS / 2}.)/uGH.z,0.,uGH.w-.001); ivec2 c=ivec2(floor(fx),floor(fz)); float u=fx-float(c.x), v=fz-float(c.y);
+  float a=gdec(c), b=gdec(c+ivec2(1,0)), cc=gdec(c+ivec2(0,1)), d=gdec(c+ivec2(1,1)); return (u+v<1.)? a+(b-a)*u+(cc-a)*v : d+(b-d)*(1.-v)+(cc-d)*(1.-u); }`,
+        hook: `{ float R=uGP.y; vec2 gb=aModel[3].xz; vec2 q=gb-floor((gb-uCam.xz)/(2.*R)+.5)*(2.*R); float dist=length(q-uCam.xz);
+  float gy=gheight(q); vec3 gcol=textureLod(uTexB,q/${WS}.+.5,2.).rgb; float gm=smoothstep(.015,.075,gcol.g-max(gcol.r,gcol.b));
+  float fade=1.-smoothstep(.5*R,.97*R,dist); float keep=clamp((gm-.12)*3.-aInst.w*.55,0.,1.)*step(uGP.x+.9,gy);
+  float sc=fade*keep*(.65+.75*aInst.z); float yw=aInst.x*6.2831, cy=cos(yw), sy=sin(yw);
+  vec2 wv=vec2(sin(uTime*1.3+q.x*.18+q.y*.11)*.5+.5+.35*sin(uTime*2.7+q.x*.9+q.y*.4), cos(uTime*1.1+q.y*.15)*.3+.15)*.55; float hh2=lp.y*lp.y;
+  lp.x+=(cy*wv.x-sy*wv.y)*hh2/max(sc,.05)*.8; lp.z+=(sy*wv.x+cy*wv.y)*hh2/max(sc,.05)*.8;
+  M=mat4(cy*sc,0.,-sy*sc,0., 0.,sc*(.85+.3*aInst.y),0.,0., sy*sc,0.,cy*sc,0., q.x,gy-.06,q.y,1.); vInst=vec4(gcol,aInst.y); ln=vec3(0.,1.,0.); }`,
+        surf: `float hh=clamp(vL.y/.85,0.,1.); vec3 g=vInst.rgb; float gl0=dot(g,vec3(.33)); g=mix(vec3(gl0),g,1.25);
+  alb=g*mix(vec3(.28,.4,.16),vec3(1.5,1.55,.8),pow(hh,1.4))*(.7+.6*vInst.w)*1.3; alb*=1.-.35*smoothstep(.3,.0,hh)*step(.5,fract(vL.x*37.+vL.z*23.)); alb=mix(alb,alb*vec3(1.25,1.1,.6),smoothstep(.55,1.,vInst.w)*hh*.6); alb=mix(alb,vec3(.9,.94,1.),uSnowCov*(.35+.6*hh)); alb*=1.-.25*uWet;
+  N=normalize(mix(normalize(vN),vec3(0.,1.,0.),.8)); ao=.3+.7*hh; rough=.7; spec=.2;
+  { vec3 Vv=normalize(uCam-vW); float tr=pow(max(dot(-Vv,uSunDir),0.),1.8)*(.25+.75*hh); emis+=alb*uSunCol*tr*.7; float fr=pow(1.-abs(dot(N,Vv)),3.); emis+=uSkyAmb*fr*.12*alb; }` }); }
     // rocks
-    const rr = mulberry32(99), nR = Math.floor(this.q.trees * .1), RM = new Float32Array(nR * 16), RI = new Float32Array(nR * 4); let rn = 0;
-    while (rn < nR) { const a = rr() * TAU, d = Math.sqrt(rr()) * 1400, x = Math.cos(a) * d, z = Math.sin(a) * d, h = this.heightAt(x, z); if (h < this.waterLevel + 1 || this.nearVillage(x, z, 1.1) || this.roadDist(x, z) < 8) continue; const s = .8 + rr() * 3.5 * (rr() < .15 ? 2.5 : 1); M4.rotY(RM.subarray(rn * 16, rn * 16 + 16), rr() * TAU, [x, h - s * .25, z], s * 1.3, s * .9, s * 1.1); RI[rn * 4 + 2] = rr(); rn++; }
+    const rr = mulberry32(99), nR = Math.floor(this.q.trees * .24), RM = new Float32Array(nR * 16), RI = new Float32Array(nR * 4); let rn = 0;
+    while (rn < nR) { const a = rr() * TAU, d = Math.sqrt(rr()) * 1400 * WF, x = Math.cos(a) * d, z = Math.sin(a) * d, h = this.heightAt(x, z); if (h < this.waterLevel + 1 || this.nearVillage(x, z, 1.1) || this.roadDist(x, z) < 8) continue; const s = .8 + rr() * 3.5 * (rr() < .15 ? 2.5 : 1); M4.rotY(RM.subarray(rn * 16, rn * 16 + 16), rr() * TAU, [x, h - s * .25, z], s * 1.3, s * .9, s * 1.1); RI[rn * 4 + 2] = rr(); rn++; }
     e.instances(rockMesh, RM, RI, nR); this.rockMesh = rockMesh;
     this.rockMat = e.material('rock', { defs: ['INST'], fdecl: BUMP_GLSL, surf: `float n=fbm(vL.xz*2.+vL.y); alb=vec3(${lin(B.rock).map(v=>v.toFixed(4)).join(',')})*(.6+.7*n)*(.8+.4*vInst.z); N=bumpN(N,vW,fbm(vW.xz*3.+vW.y*2.),1.2); rough=.9; spec=.1; ao=.6+.4*smoothstep(-.5,1.,vL.y);` });
   }
@@ -1136,6 +1187,8 @@ World.prototype.buildBuildings = function () {
     else if(m==3){ float row=floor(uv.y*2.5); float bx=fract(uv.x*1.6+mod(row,2.)*.5); float by=fract(uv.y*2.5); float mo=smoothstep(0.,.07,bx)*smoothstep(1.,.93,bx)*smoothstep(0.,.1,by)*smoothstep(1.,.9,by); alb*=(.5+.5*mo)*(.72+.55*n); N=bumpN(N,vW,mo*.6+n*.35,.6); }
     else if(m==4){ float fl=1.+.25*sin(uTime*7.+vInst.z*40.); emis=vec3(1.,.55,.2)*vExt.y*fl*(1.-vInst.x)*2.2*(1.-smoothstep(.4,1.,vInst.y)); alb=vec3(.03,.025,.02); spec=.5; rough=.2; }
     else if(m==5){ float s=vnoise(vec2(lp.x*7.,lp.z*1.3+lp.y*.8)); alb*=.65+.6*s; N=bumpN(N,vW,s,.5); rough=.95; }
+    { float cvb=uSnowCov*smoothstep(.4,.78,N.y+.18*(n-.5))*(1.-vInst.x); alb=mix(alb,vec3(.86,.9,.97)*(.92+.12*n),cvb*.92); rough=mix(rough,.6,cvb); alb*=1.-.2*uWet; }
+    ${this.B.snow ? `{ float sc=smoothstep(.42,.78,N.y+.18*(n-.5))*(1.-vInst.x); alb=mix(alb,vec3(.86,.9,.97)*(.92+.12*n),sc*.92); rough=mix(rough,.6,sc); N=normalize(mix(N,vec3(0.,1.,0.),sc*.5)); }` : ''}
     alb=mix(alb,vec3(.02,.016,.013)*(.6+.9*n),vInst.x);
     float fi=vInst.y; emis+=vec3(2.7,.8,.12)*fi*(.2+1.2*fbm(vL.xz*2.2+uTime*2.4+vL.y*.5))*(.35+.65*hgt)*(1.-vInst.x*.75);` });
   const names = Object.keys(BTYPES);
@@ -1156,7 +1209,7 @@ World.prototype.uploadBuildings = function () { for (const t in this.arch) { con
 World.prototype.buildPeople = function () {
   const e = this.eng, g = new GB(), skin = lin('#d2a77c'); g.cyl(0, 0, 0, .26, .2, .95, 6, [1, 1, 1], [1, 0], true); g.blob(0, 1.15, 0, .18, .2, .18, skin, [0, 0], mulberry32(2), 6, 3, 0); this.peopleMesh = g.build(e);
   const r = mulberry32(77); this.people = []; const tints = ['#a8322a', '#2c4a8a', '#6a8a3a', '#8a6a3a', '#d8cfa8', '#5a3a6a'].map(lin);
-  for (const v of this.villages) { const n = Math.floor((v.kind === 0 ? 16 : v.kind === 1 ? 34 : 26) * this.q.people); for (let i = 0; i < n; i++) { const a = r() * TAU, d = 8 + r() * v.R * .8, x = v.cx + Math.cos(a) * d, z = v.cz + Math.sin(a) * d; this.people.push({ x, z, y: this.heightAt(x, z), hx: x, hz: z, vx: 0, vz: 0, v, tint: tints[Math.floor(r() * 6)], panic: 0, ph: r() * 6, dead: false, tx: x, tz: z }); } }
+  for (const v of this.villages) { const n = Math.floor((v.kind === 0 ? 16 : v.kind === 1 ? 34 : 26) * this.q.people * 2.4); for (let i = 0; i < n; i++) { const a = r() * TAU, d = 8 + r() * v.R * .8, x = v.cx + Math.cos(a) * d, z = v.cz + Math.sin(a) * d; this.people.push({ x, z, y: this.heightAt(x, z), hx: x, hz: z, vx: 0, vz: 0, v, tint: tints[Math.floor(r() * 6)], panic: 0, ph: r() * 6, dead: false, tx: x, tz: z }); } }
   const n = this.people.length; this.pM = new Float32Array(n * 16); this.pI = new Float32Array(n * 4); this.people.forEach((p, i) => { this.pI[i * 4] = p.tint[0]; this.pI[i * 4 + 1] = p.tint[1]; this.pI[i * 4 + 2] = p.tint[2]; }); e.instances(this.peopleMesh, this.pM, this.pI, n);
   this.peopleMat = e.material('people', { defs: ['INST'], surf: `alb=vCol.rgb*mix(vec3(1.),vInst.rgb,vExt.x); spec=.05;` });
 };
@@ -1175,7 +1228,7 @@ World.prototype.updatePeople = function (dt, dragonPos, alarm) {
 };
 World.prototype.drawList = function (cam, time) {
   const L = []; L.push({ mesh: this.terrainMesh, mat: this.terrainMat });
-  for (const m of this.treeMeshes) L.push({ mesh: m.mesh, mat: m.k === 'grass' ? this.grassMat : this.treeMat }); L.push({ mesh: this.rockMesh, mat: this.rockMat });
+  for (const m of this.treeMeshes) L.push({ mesh: m.mesh, mat: this.treeMat }); L.push({ mesh: this.rockMesh, mat: this.rockMat }); if (this.grassMesh) L.push({ mesh: this.grassMesh, mat: this.grassMat });
   for (const t in this.arch) L.push({ mesh: this.arch[t].mesh, mat: this.bmat });
   L.push({ mesh: this.lavaMesh, mat: this.lavaMat, model: this.lavaM, noShadow: true });
   L.push({ mesh: this.peopleMesh, mat: this.peopleMat, noShadow: true });
@@ -1196,7 +1249,7 @@ vec4 scl(vec2 sp, float Nx, float kl, out vec2 fo){ float row=floor(sp.y); sp.x+
 float stilt(vec4 s, vec2 f){ return ((s.w-.5)*f.x+(fract(s.w*37.1)-.5)*f.y)*.55*s.z; }
 `;
 const SKIN_SURF = `
-  float z=vExt.x, belly=vExt.y, arc=vExt.z; float around=vUV.y; float circ=vExt.w>.01?vExt.w:1.6;
+  float z=vExt.x, belly=vExt.y, arc=vExt.z; float au=abs(fract(vUV.y+.25)-.5); float around=.25+au; /* mirrored about the dorsal & ventral midlines so left and right sides colour identically */ float circ=vExt.w>.01?vExt.w:1.6;
   float pm=zsel(uPM0,uPM1,z), cm=zsel(uCM0,uCM1,z), tm=zsel(uTM0,uTM1,z), to=zsel(uTO0,uTO1,z);
   float bodyZ=1.-step(3.5,z); float hw=1.-step(.3,z); float cs=.23*mix(1.,mix(.62,1.,smoothstep(.8,2.2,z)),bodyZ)*(1.-.22*hw);
   float Nx=max(5.,floor(circ/cs+.5)); vec2 sp=vec2(around*Nx, arc/(cs*.78)); vec2 fA,fB,fD,fH,fM;
@@ -1234,6 +1287,7 @@ const MEM_SURF = `
   float t=vExt.y, sd=vUV.y, sec=vExt.x; float edge=min(t,1.-t);
   float cm=uCM1[1], pmv=uPM1[1], tm=uTM1[1];
   float band=smoothstep(.3,.08,edge); float vein=smoothstep(.045,.0,edge)+smoothstep(.02,.0,abs(t-.5))*.6*smoothstep(.2,.7,sd);
+  float rag=fbm(vec2(t*14.+sec*5.,sd*6.)); if(sd>.9 && rag>.6+(1.-sd)*3.) discard;
   float web=fbm(vec2(t*6.+sec*3.,sd*14.)); float cross=smoothstep(.05,.0,abs(fract(sd*7.+web*.7)-.5)-.45)*.0;
   vec3 comp=mix(uPrimal*.55,uComp*.5,clamp(cm*2.3,0.,1.)); vec3 col=mix(comp,uPrimal,band*(.55+.45*clamp(.4+pmv,0.,1.)));
   col=mix(col,uPat,smoothstep(.55,.9,web)*tm*.55*uTO1[1]);
@@ -1241,8 +1295,9 @@ const MEM_SURF = `
   vec2 vp=vec2(t*5.+sec*2.,sd*12.); vec2 ip=floor(vp), fq=fract(vp); float d1=9.,d2=9.; for(int j=-1;j<=1;j++) for(int i=-1;i<=1;i++){ vec2 gg=vec2(float(i),float(j)); float dd=length(gg+vec2(hash12(ip+gg),hash12(ip+gg+17.))-fq); if(dd<d1){d2=d1;d1=dd;} else if(dd<d2) d2=dd; }
   float cap=1.-smoothstep(0.,.12,d2-d1); col*=1.-.09*cap*(.45+.55*smoothstep(.1,.6,sd));
   float spots=smoothstep(.6,.72,fbm(vec2(t*8.+sec*5.,sd*8.+3.))); col=mix(col,col*.45+uPat*.15,spots*.45*(1.-band)); col=mix(col*.7,col*1.25,smoothstep(.1,.9,sd)*.6); col+=uComp*.06*smoothstep(.5,1.,sd);
+  float lw=abs(fract(t*6.+.2*(web-.5))-.5); float fv=smoothstep(.45,.495,lw)*smoothstep(.0,.2,sd)*(1.-.5*sd); col*=1.-fv*.38; col=mix(col,col*vec3(1.15,.95,.9),smoothstep(.4,.0,lw-.1)*.12);
   col*=1.-vein*.6; col*=.82+.3*web;
-  alb=col; N=bumpN(N,vW,web*.5+vein*.4+.35*(.5+.5*cos(t*6.2831))*smoothstep(.05,.5,sd)+.1*cap,.6); rough=.55; spec=.35; ao=.85;
+  alb=col; N=bumpN(N,vW,web*.5+fv*.5+vein*.4+.35*(.5+.5*cos(t*6.2831))*smoothstep(.05,.5,sd)+.1*cap,.6); rough=.55; spec=.35; ao=.85;
   float bl=max(-dot(normalize(vN)*(gl_FrontFacing?1.:-1.),uSunDir),0.);
   emis=alb*uSunCol*bl*.6*(.5+.7*web)*(1.-.5*cap)*vec3(1.1,.9,.8)+uComp*bl*.22+alb*uComp*.03;
   alb=mix(alb,vec3(.9,.05,.02),uHurt*.4);`;
@@ -1287,12 +1342,12 @@ class Dragon {
     const e = this.e; this.wingBones = new Loft(e, 9, 10, 10);
     this.wingBones.setExt((tb, i, j) => [4, 0, (tb % 5) * 3 + i * 1.2, 0]); const c = []; for (let i = 0; i < 9; i++) c.push([0, 0, i]); for (let t = 0; t < 10; t++) this.wingBones.set(c, new Array(9).fill(.1), new Array(9).fill(.1), [0, 1, 0], t); this.wingBones.finish();
     // membranes: 8 grids (2 wings x (3 sectors + 1 inner)), (nS+1)*(nT+1) verts each
-    this.mS = 14; this.mT = 9; const per = (this.mS + 1) * (this.mT + 1), n = per * 8; this.mPos = new Float32Array(n * 3); this.mNrm = new Float32Array(n * 3); const uv = new Float32Array(n * 2), ext = new Float32Array(n * 4), idx = [];
+    this.mS = 22; this.mT = 12; const per = (this.mS + 1) * (this.mT + 1), n = per * 8; this.mPos = new Float32Array(n * 3); this.mNrm = new Float32Array(n * 3); const uv = new Float32Array(n * 2), ext = new Float32Array(n * 4), idx = [];
     for (let g = 0; g < 8; g++) { const sec = g % 4, side = g < 4 ? 1 : -1; for (let s = 0; s <= this.mS; s++) for (let t = 0; t <= this.mT; t++) { const k = g * per + s * (this.mT + 1) + t; uv[k * 2] = t / this.mT; uv[k * 2 + 1] = s / this.mS; ext[k * 4] = sec; ext[k * 4 + 1] = t / this.mT; ext[k * 4 + 2] = side; ext[k * 4 + 3] = sec === 3 ? .3 : 0; } for (let s = 0; s < this.mS; s++) for (let t = 0; t < this.mT; t++) { const a = g * per + s * (this.mT + 1) + t, b = a + 1, c2 = a + this.mT + 1, d = c2 + 1; idx.push(a, c2, b, b, c2, d); } }
     this.memMesh = e.mesh({ pos: this.mPos, nrm: this.mNrm, uv, ext, idx: new Uint16Array(idx) }, ['pos', 'nrm']); this.memPer = per;
     this.wp = [0, 1].map(() => ({ arm: [], fing: [[], [], [], []], W: null, n2: null })); this.spreads = [.08, .4, .76, 1.1]; this.fLen = [10.4, 10, 8.7, 6.8];
   }
-  buildLegs() { const e = this.e; this.legs = new Loft(e, 9, 12, 4); this.legs.setExt((t, i, j) => [5, 0, t * 4 + i * .6, 0]); const c = []; for (let i = 0; i < 9; i++) c.push([0, 0, i]); for (let t = 0; t < 4; t++) this.legs.set(c, new Array(9).fill(.1), new Array(9).fill(.1), [0, 1, 0], t); this.legs.finish(); }
+  buildLegs() { const e = this.e; this.legs = new Loft(e, 9, 12, 4); this.legs.setExt((t, i, j) => [5, 0, Math.floor(t / 2) * 4 + i * .6, 0]); const c = []; for (let i = 0; i < 9; i++) c.push([0, 0, i]); for (let t = 0; t < 4; t++) this.legs.set(c, new Array(9).fill(.1), new Array(9).fill(.1), [0, 1, 0], t); this.legs.finish(); }
   buildHead() {
     const e = this.e, S = this.S, T = this.T, sn = T.snout, Lh = (2.55 + .14 * sn) * S, Rh = 26, rnd = mulberry32(5);
     const prof = (arrx, arry, cy) => { const c = [], rx = [], ry = []; for (let i = 0; i < Rh; i++) { const f = i / (Rh - 1); c.push([0, sampleArr(cy, f) * S, f * Lh]); rx.push(sampleArr(arrx, f) * S); ry.push(sampleArr(arry, f) * S); } return [c, rx, ry]; };
@@ -1344,7 +1399,7 @@ class Dragon {
   }
   buildSpikes() {
     const e = this.e, g = new GB(), a = this.cA, b = lin(this.T.companion.rgb).map(v => Math.min(1, v * .8 + .25)); g.cyl(0, 0, 0, .5, .3, .6, 5, a, [0, 0], false, true); g.cyl(0, .6, 0, .3, 0, .4, 5, b, [0, 1], false, true); g.cyl(0, 1, 0, 0, 0, 0, 3, b, [0, 1]);
-    this.spikeMesh = g.build(e); this.maxSpikes = 360; this.spM = new Float32Array(this.maxSpikes * 16); this.spI = new Float32Array(this.maxSpikes * 4); e.instances(this.spikeMesh, this.spM, this.spI, 0);
+    this.spikeMesh = g.build(e); this.maxSpikes = 700; this.spM = new Float32Array(this.maxSpikes * 16); this.spI = new Float32Array(this.maxSpikes * 4); e.instances(this.spikeMesh, this.spM, this.spI, 0);
     const T = this.T, S = this.S; this.neckIdx = []; this.backIdx = []; this.tailIdx = [];
     const R = this.bodyR, nT = Math.round(R * this.tNB), hT = Math.round(R * this.tH);
     for (let i = 4; i < nT - 3; i += Math.max(1, Math.round(5.5 - T.neckSpikes))) this.neckIdx.push(i);
@@ -1444,7 +1499,7 @@ class Dragon {
         const g = wi * 4 + sec, base = g * per;
         for (let si = 0; si <= mS; si++) for (let ti = 0; ti <= mT; ti++) {
           const sN = si / mS, tN = ti / mT; let o;
-          if (sec < 3) { const sc = .22, dep = sc * Math.pow(Math.sin(tN * Math.PI), .7), s2 = .88 * sN * (1 - dep * smooth(.3, 1, sN)); const a = fp(fing[sec], s2), b = fp(fing[sec + 1], s2); o = V3.lerp(a, b, tN); o = V3.add(o, V3.mul(n2, drag * .55 * S * Math.sin(Math.PI * tN) * smooth(.1, 1, sN))); }
+          if (sec < 3) { const sc = .22, dep = sc * Math.pow(Math.sin(tN * Math.PI), .7), s2 = .88 * sN * (1 - dep * smooth(.3, 1, sN)); const a = fp(fing[sec], s2), b = fp(fing[sec + 1], s2); o = V3.lerp(a, b, tN); o = V3.add(o, V3.mul(n2, drag * .55 * S * Math.sin(Math.PI * tN) * smooth(.1, 1, sN))); o = V3.add(o, V3.mul(n2, .04 * S * Math.sin(Math.PI * tN) * Math.sin(sN * 11 + sec * 1.7 + wi * 2) * (1 + .5 * Math.sin(t * 3 + sN * 5)) * smooth(.12, 1, sN))); }
           else { const u = sN, v = tN, ve = v * (1 - .13 * Math.sin(Math.PI * u) * smooth(.2, 1, v)); const ea = fp(arm, u), et = V3.lerp(hip, t3, u), base2 = V3.lerp(ea, et, ve), f3 = fp(fing[3], ve * .88), lin3 = V3.lerp(W, t3, ve); o = V3.add(base2, V3.mul(V3.sub(f3, lin3), u)); o = V3.add(o, V3.mul(n2, drag * .4 * S * Math.sin(Math.PI * u) * Math.sin(Math.PI * Math.min(ve, 1)))); o[1] -= Math.sin(Math.PI * u) * Math.sin(Math.PI * Math.min(ve, 1)) * .3 * S * (1 - .7 * Math.min(fold, 1)); }
           const k = (base + si * (mT + 1) + ti) * 3; P[k] = o[0]; P[k + 1] = o[1]; P[k + 2] = o[2];
         }
@@ -1461,8 +1516,9 @@ class Dragon {
     this.spikeList = []; const body = this.body, push = (p, d, len, w) => { if (this.spikeList.length < this.maxSpikes) this.spikeList.push([p, d, len, w]); };
     const place = (idxs, h0, h1, lean) => { idxs.forEach((i, n) => { const f = n / Math.max(idxs.length - 1, 1), fi = i * 3, p = [body.fp[fi], body.fp[fi + 1], body.fp[fi + 2]], u = [body.fu[fi], body.fu[fi + 1], body.fu[fi + 2]], tn = V3.norm(V3.sub(C[Math.min(i + 1, R - 1)], C[Math.max(i - 1, 0)])); const ry2 = RY[i]; const d = V3.norm(V3.add(V3.mul(u, 1), V3.mul(tn, lean))); push(V3.add(p, V3.mul(u, ry2 * .9)), d, lerp(h0, h1, f) * S * 1.3, lerp(h0, h1, f) * S * .4 + .03 * S); }); };
     place(this.neckIdx, .12 + .09 * T.neckSpikes, .2 + .1 * T.neckSpikes, -.5); place(this.backIdx, .2 + .12 * T.backSpikes, .26 + .13 * T.backSpikes, .55); place(this.tailIdx, .2 + .1 * T.tailSpikes, .08 + .03 * T.tailSpikes, .5);
-    // arm spikes + wing claws
-    for (let wi = 0; wi < 2; wi++) { const w = this.wp[wi], n = 2 + T.armSpikes; for (let k = 0; k < n; k++) { const q = w.arm[Math.min(8, 2 + k + (k > 3 ? 1 : 0))]; push(V3.add(q, V3.mul(w.n2, .1 * S)), V3.norm(V3.add(w.n2, V3.mul(w.d2, .55))), (.12 + .09 * T.armSpikes) * S, (.06 + .02 * T.armSpikes) * S); } for (let c = 0; c < 1 + Math.ceil(T.wingClaws / 2); c++) push(w.W, V3.norm(V3.add(V3.mul(w.d2, .5), V3.add(V3.mul(w.n2, .35 - c * .25), [0, 0, 0.9 - c * .35]))), (.3 + .12 * T.wingClaws) * S, .11 * S); for (let fi = 0; fi < 4; fi++) { const c = w.fing[fi], a = c[8], b = c[7]; push(a, V3.norm(V3.sub(a, b)), .85 * S, .06 * S); } }
+    // arm spikes + wing claws (curved multi-segment talons)
+    const talon = (p, d, len, wd, curl) => { let pp = p, dd = d; for (let k = 0; k < 4; k++) { const sl = len * [.34, .3, .22, .14][k]; push(pp, dd, sl * 1.15, wd * (1 - k * .22)); pp = V3.add(pp, V3.mul(dd, sl * .85)); dd = V3.norm(V3.add(dd, V3.mul(curl, .45))); } };
+    for (let wi = 0; wi < 2; wi++) { const w = this.wp[wi], n = 2 + T.armSpikes; for (let k = 0; k < n; k++) { const q = w.arm[Math.min(8, 2 + k + (k > 3 ? 1 : 0))]; push(V3.add(q, V3.mul(w.n2, .1 * S)), V3.norm(V3.add(w.n2, V3.mul(w.d2, .55))), (.12 + .09 * T.armSpikes) * S, (.06 + .02 * T.armSpikes) * S); } for (let c = 0; c < 1 + Math.ceil(T.wingClaws / 2); c++) push(w.W, V3.norm(V3.add(V3.mul(w.d2, .5), V3.add(V3.mul(w.n2, .35 - c * .25), [0, 0, 0.9 - c * .35]))), (.3 + .12 * T.wingClaws) * S, .11 * S); for (let fi = 0; fi < 4; fi++) { const c = w.fing[fi], a = c[8], b = c[7]; talon(a, V3.norm(V3.sub(a, b)), (1.25 - fi * .1) * S, .11 * S, w.n2); if (fi < 3) for (const j of [3, 6]) push(V3.add(c[j], V3.mul(w.n2, .04 * S)), V3.norm(V3.add(w.n2, V3.norm(V3.sub(c[j + 1], c[j])))), .24 * S, .05 * S); } talon(w.W, V3.norm(V3.add(V3.mul(w.d2, .45), V3.mul(w.n2, -.2))), (.7 + .15 * T.wingClaws) * S, .15 * S, w.n2); }
     for (let li = 0; li < 4; li++) { const lt = this.legTips[li]; for (let c = -1; c <= 1; c++) push(lt.p, V3.norm(V3.add(lt.d, [c * .3, -.25, .0])), .26 * S, .06 * S); const T2 = T.legSpikes; for (let k = 0; k < T2; k++) { const f = (k + 1) / (T2 + 1); push(V3.lerp(this.pts && lt.p, lt.p, 1), [0, 1, 0], 0.001, 0.001); } }
     // ---- fin on tail end ----
     const ti = R - 1, tp = C[ti], tt = V3.norm(V3.sub(C[ti], C[ti - 3])); let fr = V3.norm(V3.cross([0, 1, 0], tt)); const fu = V3.cross(tt, fr);
@@ -1513,17 +1569,18 @@ const FLAME = {
   AIR: { core: [2., 2., 2.4], mid: [1., .8, 2.2], end: [.18, .12, .5], smoke: .35 },
 };
 class Pool {
-  constructor(eng, N, additive) {
-    this.e = eng; this.N = N; this.add = additive; this.i = 0; const f = (n) => new Float32Array(n * N);
+  constructor(eng, N, additive, snowMode) {
+    this.e = eng; this.N = N; this.add = additive; this.snowMode = snowMode ? 1 : 0; this.i = 0; const f = (n) => new Float32Array(n * N);
     this.pos = f(3); this.vel = f(3); this.life = f(1); this.max = f(1); this.s0 = f(1); this.s1 = f(1); this.c0 = f(3); this.c1 = f(3); this.a0 = f(1); this.drag = f(1); this.grav = f(1); this.seed = f(1);
     this.gpos = f(3); this.gcol = f(4); this.gext = f(4); this.life.fill(0); this.gcol.fill(0);
     this.mesh = eng.mesh({ pos: this.gpos, col: this.gcol, ext: this.gext }, ['pos', 'col', 'ext']); this.mesh.n = N;
     const gl = eng.gl, vs = `#version 300 es\nprecision highp float; layout(location=0) in vec3 aPos; layout(location=3) in vec4 aCol; layout(location=4) in vec4 aExt; uniform mat4 uVP; uniform float uPx; uniform float uMax; out vec4 vC; out float vS;
 void main(){ vec4 p=uVP*vec4(aPos,1.); gl_Position=p; float sz=aExt.x*uPx/max(p.w,.1); gl_PointSize=clamp(sz,0.,uMax); vC=aCol; vS=aExt.y; if(aCol.a<=0.001||sz<.5) gl_Position=vec4(2.,2.,2.,1.); }`;
-    const fs = `#version 300 es\nprecision highp float; in vec4 vC; in float vS; uniform float uTime; uniform float uAdd; layout(location=0) out vec4 o;\n
+    const fs = `#version 300 es\nprecision highp float; in vec4 vC; in float vS; uniform float uTime; uniform float uAdd; uniform float uSnow; layout(location=0) out vec4 o;\n
 float h12(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }
 float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h12(i),h12(i+vec2(1,0)),f.x),mix(h12(i+vec2(0,1)),h12(i+vec2(1,1)),f.x),f.y); }
-void main(){ vec2 p=gl_PointCoord*2.-1.; float r=length(p); if(r>1.) discard; float n=vn(p*2.2+vS*17.+uTime*(.6+vS)); float a=smoothstep(1.,.15,r+(n-.5)*.55); a*=a; float al=vC.a*a;
+void main(){ vec2 p=gl_PointCoord*2.-1.; float r=length(p); if(r>1.) discard;
+  if(uSnow>.5){ float ang=vS*40.+uTime*(.4+vS); float cs=cos(ang), sn=sin(ang); vec2 q=vec2(cs*p.x-sn*p.y, sn*p.x+cs*p.y); float aa=atan(q.y,q.x); float arm=pow(abs(cos(aa*3.)),6.); float sh=smoothstep(.12+.8*arm,.0,r*.95-.0); float core=smoothstep(.45,.0,r); float al2=vC.a*clamp(sh*.9+core*.8,0.,1.)*smoothstep(1.,.75,r); float tw=.8+.5*pow(.5+.5*sin(uTime*5.+vS*80.),4.); o=vec4(vC.rgb*(.85+.3*core)*tw,al2); return; } float n=vn(p*2.2+vS*17.+uTime*(.6+vS)); float a=smoothstep(1.,.15,r+(n-.5)*.55); a*=a; float al=vC.a*a;
   if(uAdd>.5) o=vec4(vC.rgb*al,al); else o=vec4(vC.rgb,al); }`;
     this.prog = eng.link(vs, fs, 'particles');
   }
@@ -1543,10 +1600,10 @@ void main(){ vec2 p=gl_PointCoord*2.-1.; float r=length(p); if(r>1.) discard; fl
     }
     this.e.upd(this.mesh, 'pos', GP); this.e.upd(this.mesh, 'col', GC); this.e.upd(this.mesh, 'ext', GE);
   }
-  draw(cam) { const e = this.e, gl = e.gl; e.use(this.prog); e.setU(this.prog, { uVP: cam.vp, uPx: cam.px, uMax: Math.min(e.maxPoint, 900), uTime: e.G.uTime, uAdd: this.add ? 1 : 0 }); gl.enable(gl.BLEND); gl.depthMask(false); gl.disable(gl.CULL_FACE); if (this.add) gl.blendFunc(gl.ONE, gl.ONE); else gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.bindVertexArray(this.mesh.vao); gl.drawArrays(gl.POINTS, 0, this.N); gl.depthMask(true); gl.disable(gl.BLEND); gl.enable(gl.CULL_FACE); e.lastGlobalProg = null; }
+  draw(cam) { const e = this.e, gl = e.gl; e.use(this.prog); e.setU(this.prog, { uVP: cam.vp, uPx: cam.px, uMax: Math.min(e.maxPoint, 900), uTime: e.G.uTime, uAdd: this.add ? 1 : 0, uSnow: this.snowMode }); gl.enable(gl.BLEND); gl.depthMask(false); gl.disable(gl.CULL_FACE); if (this.add) gl.blendFunc(gl.ONE, gl.ONE); else gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.bindVertexArray(this.mesh.vao); gl.drawArrays(gl.POINTS, 0, this.N); gl.depthMask(true); gl.disable(gl.BLEND); gl.enable(gl.CULL_FACE); e.lastGlobalProg = null; }
 }
 class FX {
-  constructor(eng, q, house) { this.e = eng; this.fire = new Pool(eng, q.particles, true); this.smoke = new Pool(eng, Math.floor(q.particles * .7), false); this.snow = new Pool(eng, Math.min(1400, Math.floor(q.particles * .45)), false); this.setHouse(house); this.rnd = Math.random; }
+  constructor(eng, q, house) { this.e = eng; this.fire = new Pool(eng, q.particles, true); this.smoke = new Pool(eng, Math.floor(q.particles * .7), false); this.snow = new Pool(eng, Math.min(2200, Math.floor(q.particles * .6)), false, true); this.setHouse(house); this.rnd = Math.random; }
   setHouse(h) { this.fl = FLAME[h] || FLAME.FIRE; }
   breath(o, d, vel, amt) { // spawn one breath particle
     const r = this.rnd, F = this.fl, sp = .1 + r() * .16, rx = (r() - .5) * sp, ry = (r() - .5) * sp, rz = (r() - .5) * sp, speed = 62 + r() * 22;
@@ -1561,12 +1618,21 @@ class FX {
   ring(x, y, z, radius, col, n) { const r = this.rnd; for (let i = 0; i < n; i++) { const a = i / n * TAU + r() * .1, sp = radius / .9; this.fire.spawn(x, y, z, Math.cos(a) * sp, 1 + r() * 3, Math.sin(a) * sp, .9, 3, 6, col, col.map(v => v * .1), .9, 1.6, 0); } }
   bolt(x0, y0, z0, x1, y1, z1, col) { const r = this.rnd, n = 34; let px = x0, pz = z0; for (let i = 0; i <= n; i++) { const f = i / n; px = lerp(x0, x1, f) + (r() - .5) * 5 * Math.sin(f * 3); pz = lerp(z0, z1, f) + (r() - .5) * 5 * Math.sin(f * 3); this.fire.spawn(px, lerp(y0, y1, f), pz, 0, 0, 0, .25 + r() * .2, 1.6, .5, [3, 3, 3.6].map((v, k) => v * (col ? col[k] : 1)), col || [1, .9, 2], 1, 0, 0); } }
   // falling snow / ash around the camera; c = camera position, v = camera velocity
-  weather(dt, c, v, ws, wa) {
-    const r = this.rnd, n = (ws * 230 + wa * 110) * dt + r(); for (let i = Math.floor(n); i > 0; i--) {
+  weather(dt, c, v, ws, wa, wr, gh, t) {
+    const r = this.rnd; t = t || 0; wr = wr || 0;
+    const gust = .65 + .35 * Math.sin(t * .37) * Math.sin(t * .91 + 1.3) + .25 * Math.sin(t * 2.3), n = (ws * ws * 420 + ws * 70 + wa * 110) * dt + r();
+    for (let i = Math.floor(n); i > 0; i--) {
       const isSnow = r() * (ws + wa + 1e-4) < ws, ox = (r() - .5) * 150, oz = (r() - .5) * 150, oy = (r() - .35) * 70;
       const x = c[0] + v[0] * .9 + ox, y = c[1] + v[1] * .5 + oy, z = c[2] + v[2] * .9 + oz;
-      if (isSnow) this.snow.spawn(x, y, z, -7 + (r() - .5) * 5, -(3 + r() * 3), 3 + (r() - .5) * 4, 4 + r() * 1.5, .15 + r() * .1, .14, [1, 1, 1], [.9, .94, 1], .55 + r() * .3, .25, 0);
+      if (isSnow) { // light snow: sparse, big, lazy flakes; heavy snow: dense, small, wind-driven streams
+        const hv = ws * ws, big = r() < .12 * (1 - hv * .7), sz = (big ? .4 + r() * .3 : .1 + r() * .14) * (1 - .25 * hv), wnd = (-1.5 - 12 * hv * gust) + (r() - .5) * (3 + 6 * hv), fall = (1.1 + r() * 1.3 + 3.5 * hv) * (big ? .7 : 1);
+        this.snow.spawn(x, y, z, wnd, -fall, (r() - .5) * (3 + 4 * hv) + 2 * hv * gust, 6 + r() * 2.5, sz, sz * .9, [1, 1, 1], [.92, .96, 1], big ? .35 + r() * .2 : .55 + r() * .4, .3 + .3 * hv, 0); }
       else this.snow.spawn(x, y, z, 4 + (r() - .5) * 4, -(1.5 + r() * 2), (r() - .5) * 4, 5 + r() * 2, .16 + r() * .16, .14, [.22, .19, .17], [.12, .1, .1], .6, .2, 0);
+    }
+    if (wr > .08 && gh) { // rain: drizzle mist + ground splashes; heavy rain adds splash density, spray and low mist
+      const ns = (wr * wr * 120 + wr * 8) * dt + r(); for (let i = Math.floor(ns); i > 0; i--) { const a = r() * TAU, d = Math.sqrt(r()) * 38, x = c[0] + Math.cos(a) * d + v[0] * .5, z = c[2] + Math.sin(a) * d + v[2] * .5, y = gh(x, z) + .05;
+        this.smoke.spawn(x, y, z, (r() - .5) * 1.2, 1.2 + r() * 2 * wr, (r() - .5) * 1.2, .28 + r() * .22, .06 + .05 * wr, .26 + .3 * wr, [.8, .86, .92], [.75, .8, .86], .2 + .25 * wr, 2.5, 5, 0); }
+      if (wr > .5 && r() < dt * 14 * wr) { const a = r() * TAU, d = 20 + r() * 70, x = c[0] + Math.cos(a) * d, z = c[2] + Math.sin(a) * d; this.smoke.spawn(x, gh(x, z) + 1.5, z, 1.5 + wr, .1, .6, 4 + r() * 2, 6, 16, [.7, .76, .82], [.66, .72, .78], .12 * wr, .6, 0, 0); } // low mist rolling in the wind
     }
     if (wa > .2 && r() < dt * 30 * wa) this.ember(c[0] + v[0] * .8 + (r() - .5) * 120, c[1] + (r() - .5) * 40, c[2] + v[2] * .8 + (r() - .5) * 120);
   }
@@ -1626,9 +1692,9 @@ class Sfx {
 // ===== Game =====
 const $ = (id) => document.getElementById(id);
 const QUALITY = {
-  low: { terrainN: 224, splat: 896, trees: 1500, people: .5, particles: 3200, shadow: 1024, msaa: 0, bloom: false, scale: .7, shadows: true },
-  med: { terrainN: 352, splat: 1280, trees: 3400, people: .8, particles: 6000, shadow: 2048, msaa: 2, bloom: true, scale: 1, shadows: true },
-  high: { terrainN: 448, splat: 1536, trees: 6000, people: 1, particles: 9000, shadow: 2048, msaa: 4, bloom: true, scale: 1, shadows: true },
+  low: { terrainN: 288, splat: 896, trees: 1500, people: .5, particles: 3200, shadow: 1024, msaa: 0, bloom: false, scale: .7, shadows: true },
+  med: { terrainN: 416, splat: 1280, trees: 3400, people: .8, particles: 6000, shadow: 2048, msaa: 2, bloom: true, scale: 1, shadows: true },
+  high: { terrainN: 576, splat: 1536, trees: 6000, people: 1, particles: 9000, shadow: 2048, msaa: 4, bloom: true, scale: 1, shadows: true },
 };
 const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const MAGIC_NAME = { FIRE: 'Meteor Nova', WATER: 'Tidal Steam Nova', AIR: 'Stormcall Nova', EARTH: 'Quake Nova' };
@@ -1667,7 +1733,7 @@ class Game {
     this.st = deriveStats(this.T); this.pk = { rate: 1, blast: 1, mag: 1 }; this.level = 0;
     const w = this.world, v = w.villages[0], a = Math.atan2(v.cx, v.cz) + Math.PI, sx = v.cx + Math.sin(a) * 340, sz = v.cz + Math.cos(a) * 340, yaw = Math.atan2(v.cx - sx, v.cz - sz); const st = this.st;
     this.D = { pos: [sx, w.heightAt(sx, sz) + 95, sz], yaw, pitch: 0, roll: 0, yawRate: 0, speed: 0, vel: [0, 0, 0], hp: st.hp, fuel: st.fuel, spec: .35, stam: st.stamina, boost: 0, invul: 0, lashCD: 0, spin: 0, breath: 0, flapEdge: false, lastPh: 0, climbCmd: 0, roar: 0, dead: false, deadT: 0 };
-    this.zone = {}; this.volT = 4; this.volFlash = 0; this.camYaw = yaw; this.camPitch = -.12; this.score = 0; this.combo = 0; this.bolts.length = 0; this.fireballs = []; this.fbCD = 0; this.expl = null; this.patches.length = 0; this.alertOn = false; this.stats = { burned: 0, towers: 0, time: 0 };
+    this.zone = {}; this.world.t0 = this.time; this.snowCov = 0; this.wet = 0; this.volT = 4; this.volFlash = 0; this.camYaw = yaw; this.camPitch = -.12; this.score = 0; this.combo = 0; this.bolts.length = 0; this.fireballs = []; this.fbCD = 0; this.expl = null; this.patches.length = 0; this.alertOn = false; this.stats = { burned: 0, towers: 0, time: 0 };
     for (const v of w.villages) { v.razed = false; v.pct = 0; v.belled = false; for (const b of v.buildings) { b.heat = 0; b.fire = 0; b.burnT = 0; b.collapse = 0; b.dead = false; b.burning = false; b.char = 0; b.glow = 0; w.setBldMatrix(b); } } w.uploadBuildings(); for (const bl of w.ballistae) { bl.disabled = 0; bl.cd = 3 + Math.random() * 3; }
     for (const t of w.trees) { if (t.burn !== undefined) { t.burn = undefined; } } for (const m of w.treeMeshes) { for (let i = 0; i < m.n; i++) m.I[i * 4 + 1] = 0; w.eng.updInst(m.mesh, null, m.I); }
     this.buildHud(); { const l = $('lvl'); if (l) l.remove(); }
@@ -1729,7 +1795,7 @@ class Game {
   }
   lash() { const D = this.D; if (this.mode !== 'play' || D.lashCD > 0 || D.dead) return; D.lashCD = this.st.lashCD; D.spin = 1; D.invul = .9; this.sfx.flap(1.5); this.sfx.noiseHit && this.sfx.noiseHit(this.sfx.ctx.currentTime, 900, 1, .02, .5, .4); for (const v of this.world.villages) for (const b of v.buildings) if (b.hard < 1e8 && !b.dead && Math.hypot(b.x - D.pos[0], b.z - D.pos[2]) < 24 + b.r && D.pos[1] < b.y + b.top + 14) { b.heat += 1.2 + this.T.tailStr * .35; this.fx.burst(b.x, b.y + b.top, b.z, 8, [1.4, 1.1, .6], 14, 2.5); } }
   roar() { const D = this.D; if (D.roar > 0 || D.dead) return; D.roar = 1.6; this.sfx.roar(this.T.size); this.shake = .5; for (const v of this.world.villages) if (Math.hypot(v.cx - D.pos[0], v.cz - D.pos[2]) < v.R + 500) this.setAlert(v.idx); this.world.people.forEach(p => { if (Math.hypot(p.x - D.pos[0], p.z - D.pos[2]) < 220) p.panic = 1; }); }
-  damage(n) { const D = this.D; if (D.invul > 0 || D.dead || this.mode !== 'play') return; D.hp -= n * this.st.armor; this.hurtT = 1; this.shake = Math.max(this.shake, .7); this.dragon.hurt = 1; this.sfx.hit(n > 12); this.combo = 0; if (D.hp <= 0) { D.hp = 0; D.dead = true; D.deadT = 0; this.fx.burst(D.pos[0], D.pos[1], D.pos[2], 60, [2, .8, .2], 30, 5); this.sfx.boom(1); } }
+  damage(n) { const D = this.D; if (D.invul > 0 || D.dead || this.mode !== 'play') return; n *= 1 + .5 * smooth(.45, .9, this.wr || 0) + .12 * (this.wr || 0) + 2 * smooth(.2, .7, this.ws || 0); D.hp -= n * this.st.armor; this.hurtT = 1; this.shake = Math.max(this.shake, .7); this.dragon.hurt = 1; this.sfx.hit(n > 12); this.combo = 0; if (D.hp <= 0) { D.hp = 0; D.dead = true; D.deadT = 0; this.fx.burst(D.pos[0], D.pos[1], D.pos[2], 60, [2, .8, .2], 30, 5); this.sfx.boom(1); } }
   // ---------------- simulation ----------------
   headingVec(yaw, pitch) { return [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)]; }
   basis(yaw, pitch, roll) { const f = this.headingVec(yaw, pitch); let l = V3.norm(V3.cross([0, 1, 0], f)); const u0 = V3.cross(f, l), c = Math.cos(roll), s = Math.sin(roll); return { f, r: V3.add(V3.mul(l, c), V3.mul(u0, -s)), u: V3.add(V3.mul(u0, c), V3.mul(l, s)) }; }
@@ -1752,7 +1818,7 @@ class Game {
       let rt = clamp(D.yawRate * .62, -.95, .95); if (D.spin > 0) { D.spin = Math.max(0, D.spin - dt / .85); D.rollSpin = (1 - D.spin) * TAU; } else D.rollSpin = 0; D.roll = lerp(D.roll, rt, clamp(dt * 4, 0, 1)); D.invul = Math.max(0, D.invul - dt); D.lashCD = Math.max(0, D.lashCD - dt); D.roar = Math.max(0, D.roar - dt);
       // terrain / bounds / buildings
       const gy = w.heightAt(D.pos[0], D.pos[2]) + 4; if (D.pos[1] < gy) { if (D.vel[1] < -12 && D.speed > 25) { this.damage(6 + Math.max(0, -D.vel[1] * .25)); this.fx.burst(D.pos[0], gy, D.pos[2], 14, [.6, .5, .4], 16, 3); this.fx.smokePuff(D.pos[0], gy, D.pos[2], 7, false); } D.pos[1] = gy; D.pitch = Math.max(D.pitch, .05); this.camPitch = Math.max(this.camPitch, .02); D.speed *= (1 - dt * .6); }
-      if (D.pos[1] > 1150) { D.pos[1] = 1150; D.pitch = Math.min(D.pitch, 0); } const rr = Math.hypot(D.pos[0], D.pos[2]); this.warn = rr > 1380; if (this.warn) { const a = Math.atan2(-D.pos[0], -D.pos[2]); this.camYaw += clamp(wrapA(a - this.camYaw), -1, 1) * dt * 1.8; }
+      if (D.pos[1] > 1150) { D.pos[1] = 1150; D.pitch = Math.min(D.pitch, 0); } const rr = Math.hypot(D.pos[0], D.pos[2]); this.warn = rr > 1380 * WF; if (this.warn) { const a = Math.atan2(-D.pos[0], -D.pos[2]); this.camYaw += clamp(wrapA(a - this.camYaw), -1, 1) * dt * 1.8; }
       for (const v of w.villages) if (Math.hypot(D.pos[0] - v.cx, D.pos[2] - v.cz) < v.R + 60) for (const b of v.buildings) { if (b.dead || b.type === 'wall' || b.minor) continue; const dx = D.pos[0] - b.x, dz = D.pos[2] - b.z, rad = b.r * .78 + 2; if (dx * dx + dz * dz < rad * rad && D.pos[1] < b.y + b.top * (1 - .8 * b.collapse) + 3.5) { D.pos[1] = b.y + b.top * (1 - .8 * b.collapse) + 3.5; if (D.invul <= 0) { this.damage(8); b.heat += .6; this.fx.burst(D.pos[0], D.pos[1] - 2, D.pos[2], 12, [1.4, 1, .5], 14, 2.5); D.speed *= .8; D.invul = .5; } } }
       // regen
       D.spec = clamp(D.spec + dt / st.novaTime, 0, 1); if (D.hp > 0 && this.hurtT <= 0) D.hp = Math.min(st.hp, D.hp + (1.6 + (st.regenHp || 0)) * dt);
@@ -1781,9 +1847,11 @@ class Game {
   // ---- landmark weather & volcano ----
   simWorldFx(dt) {
     const w = this.world, fx = this.fx, q = w.feat.vol, D = this.D, c = this.cam.pos, play = this.mode === 'play', P = play ? D.pos : c, r = Math.random;
-    this.ws = lerp(this.ws || 0, w.snowW(P[0], P[2]), clamp(dt * 1.2, 0, 1)); this.wa = lerp(this.wa || 0, w.ashW(P[0], P[2]), clamp(dt * 1.2, 0, 1));
-    w.applyWeather(this.ws, this.wa); fx.weather(dt, c, play ? D.vel : [0, 0, 0], this.ws, this.wa);
-    if (play) { this.zone = this.zone || {}; if (this.ws > .55 && !this.zone.s) { this.zone.s = 1; this.toast('FROSTPEAK — THE BLIZZARD HOWLS'); } if (this.wa > .55 && !this.zone.a) { this.zone.a = 1; this.toast('CINDER MOUNTAIN — ASH AND LAVA'); } }
+    this.ws = lerp(this.ws || 0, Math.max(w.snowW(P[0], P[2]), w.snowEv(P[0], P[2])), clamp(dt * 1.2, 0, 1)); this.wa = lerp(this.wa || 0, Math.max(w.ashW(P[0], P[2]), w.ashEv(P[0], P[2])), clamp(dt * 1.2, 0, 1)); this.wr = lerp(this.wr || 0, w.rainW(P[0], P[2]), clamp(dt * 1.2, 0, 1));
+    w.applyWeather(this.ws, this.wa, this.wr); fx.weather(dt, c, play ? D.vel : [0, 0, 0], this.ws, this.wa, this.wr, (x, z) => w.heightAt(x, z), this.time);
+    { const G = this.eng.G; this.snowCov = this.snowCov || 0; this.wet = this.wet || 0; const sg = this.ws > .12 ? this.ws : 0; this.snowCov = clamp(this.snowCov + (sg * dt * (.012 + .03 * sg) - (sg ? 0 : dt * .004)) , 0, 1); if (w.snowW(P[0], P[2]) > .6) this.snowCov = Math.max(this.snowCov, .9 * w.snowW(P[0], P[2])); this.wet = clamp(this.wet + (this.wr * dt * .08 - (this.wr > .05 ? 0 : dt * .01)), 0, 1); G.uSnowCov = this.snowCov * (1 - this.wa * .8); G.uWet = this.wet * (1 - this.snowCov); }
+    { const L = this.lightning = this.lightning || { t: 0, cd: 6, thunder: -1 }; L.t = Math.max(0, L.t - dt * 3.2); L.cd -= dt; if (this.wr > .68 && L.cd <= 0) { L.t = 1; L.cd = 5 + r() * 12 / (this.wr + .3); L.thunder = .4 + r() * 2.2; this.shake = Math.max(this.shake || 0, .0); } if (L.thunder > 0) { L.thunder -= dt; if (L.thunder <= 0) { this.sfx.boom && this.sfx.boom(.35 + .25 * this.wr); L.thunder = -1; } } }
+    if (play) { this.zone = this.zone || {}; if (this.wr > .5 && !this.zone.r) { this.zone.r = 1; this.toast('RAIN SWEEPS IN — FIRES WILL NOT SPREAD'); } if (this.wr > .75 && !this.zone.rh) { this.zone.rh = 1; this.toast('HEAVY RAIN — DAMAGE x1.5'); } if (this.wr < .5) this.zone.rh = 0; if (this.wr < .08) this.zone.r = 0; const se = w.snowEv(P[0], P[2]), ae = w.ashEv(P[0], P[2]); if (se > .25 && !this.zone.se) { this.zone.se = 1; this.toast('SNOW BEGINS TO FALL'); } if (se < .03) this.zone.se = 0; if (ae > .25 && !this.zone.ae) { this.zone.ae = 1; this.toast('ASH DRIFTS ON THE WIND'); } if (ae < .03) this.zone.ae = 0; if (this.ws > .55 && !this.zone.s) { this.zone.s = 1; this.toast('FROSTPEAK — THE BLIZZARD HOWLS · DAMAGE x3'); } if (this.wa > .55 && !this.zone.a) { this.zone.a = 1; this.toast('CINDER MOUNTAIN — ASH AND LAVA'); } }
     // chimney smoke from nearby homes
     if (!this.chim) { this.chim = []; for (const t of ['cottageA', 'cottageB', 'longhouse', 'cottageAS', 'cottageBS', 'longhouseS', 'cottageAV', 'cottageBV', 'longhouseV']) { const a = w.arch[t]; if (a) for (const b of a.list) this.chim.push(b); } }
     if (this.chim.length && r() < dt * 14) { const b = this.chim[(r() * this.chim.length) | 0]; if (!b.burning && !b.dead && Math.hypot(b.x - c[0], b.z - c[2]) < 700) { const s2 = Math.sin(b.yaw), c2 = Math.cos(b.yaw), ox = 1.7 * b.s, oz = -1 * b.s; fx.smoke.spawn(b.x + c2 * ox + s2 * oz, b.y + 6.4 * b.s, b.z - s2 * ox + c2 * oz, 1.4 + r(), 2.2 + r() * 1.5, .6, 7 + r() * 3, .5, 4.5, [.34, .33, .32], [.2, .2, .2], .22, .3, -.15); } }
@@ -1862,14 +1930,14 @@ class Game {
       let done = 0;
       for (const b of v.buildings) {
         if (b.hard > 1e8) continue;
-        if (!b.burning && !b.dead) { if (b.heat >= b.hard) this.ignite(b); else if (b.heat > 0) b.heat = Math.max(0, b.heat - dt * .12); }
+        if (!b.burning && !b.dead) { if (b.heat >= b.hard) this.ignite(b); else if (b.heat > 0) b.heat = Math.max(0, b.heat - dt * (.12 + 1.6 * (this.wr || 0))); }
         if (b.burning) {
           b.burnT += dt; const k = b.burnT / b.dur; b.fire = smooth(0, .1, k) * (1 - smooth(.8, 1, k)); b.glow = b.fire; b.char = smooth(0, .75, k); const col0 = b.collapse; b.collapse = smooth(.5, .88, k); w.setBldMatrix(b); dirty = true;
           if (col0 < .5 && b.collapse >= .5) { this.sfx.collapse(); fx.burst(b.x, b.y + b.top * .4, b.z, 18, [1.6, 1, .4], 18, 4); for (let i = 0; i < 5; i++) fx.smokePuff(b.x + (Math.random() - .5) * b.r, b.y + 2, b.z + (Math.random() - .5) * b.r, 9, true); }
           const dist = Math.hypot(b.x - cp[0], b.z - cp[2]); const lod = clamp(1.2 - dist / 900, .12, 1);
           if (dist < 1100) { const rate = (b.fire * (1 - b.collapse * .6)) * lod; for (const p of b.pts) { if (Math.random() < rate * dt * 11) fx.flame(p[0] + (Math.random() - .5) * 2, p[1] - b.collapse * b.top * .6 + Math.random() * 1.5, p[2] + (Math.random() - .5) * 2, 2.4 + b.s * 1.6); if (Math.random() < rate * dt * 2.2) fx.smokePuff(p[0], p[1] - b.collapse * b.top * .5 + 2, p[2], 4 + b.r * .5, true); if (Math.random() < rate * dt * .8) fx.ember(p[0], p[1], p[2]); } }
           if (b.fire > .15) this.burningList.push(b);
-          if (spread) for (const o of v.buildings) { if (o.burning || o.dead || o.hard > 1e8) continue; const d = Math.hypot(o.x - b.x, o.z - b.z); if (d < b.r + o.r + 24) o.heat += sdt * .95 * b.fire * (1 - d / (b.r + o.r + 20)) * (o.hard > 2 ? .4 : 1); }
+          if (spread && (this.wr || 0) < .12) for (const o of v.buildings) { if (o.burning || o.dead || o.hard > 1e8) continue; const d = Math.hypot(o.x - b.x, o.z - b.z); if (d < b.r + o.r + 24) o.heat += sdt * .95 * b.fire * (1 - d / (b.r + o.r + 20)) * (o.hard > 2 ? .4 : 1); }
           if (k >= 1) { b.burning = false; b.dead = true; b.fire = 0; b.glow = 0; b.char = 1; w.setBldMatrix(b); this.addScore(b.score * .6); if (b.tower) { this.stats.towers++; this.toast('BALLISTA TOWER DESTROYED'); } if (b.type === 'church' || b.type === 'keep') this.toast(b.type === 'keep' ? 'THE KEEP FALLS' : 'THE CHURCH FALLS'); }
         }
         if ((b.burning || b.dead) && !b.minor && b.type !== 'wall') done++;
@@ -1918,7 +1986,7 @@ class Game {
     const sd = G.uSunDir, sp = [c.pos[0] + sd[0] * 2000, c.pos[1] + sd[1] * 2000, c.pos[2] + sd[2] * 2000], vp = c.vp, cw = vp[3] * sp[0] + vp[7] * sp[1] + vp[11] * sp[2] + vp[15]; let sun = [.5, .5, 0];
     if (cw > 1) { const sx = (vp[0] * sp[0] + vp[4] * sp[1] + vp[8] * sp[2] + vp[12]) / cw * .5 + .5, sy = (vp[1] * sp[0] + vp[5] * sp[1] + vp[9] * sp[2] + vp[13]) / cw * .5 + .5; sun = [sx, sy, clamp(1.3 - Math.hypot(sx - .5, sy - .5) * 1.4, 0, 1)]; }
     const sc = G.uSunCol, sm = Math.max(sc[0], sc[1], sc[2], 1e-3); const storm = Math.max(w.wSnow || 0, w.wAsh || 0);
-    e.endScene({ thr: 1.05, bloom: .55, exp: w.exposure, dmg: this.hurtT * .8 + (D && D.dead ? .6 : 0), aber: .018 + (D ? D.boost * .03 : 0), tint: [1, 1, 1], sun, rayCol: [sc[0] / sm, sc[1] / sm, sc[2] / sm], rays: .55 * (1 - .75 * storm), speed: D && this.mode === 'play' ? clamp(D.boost * .9 + (D.speed - 60) / 120, 0, 1) : 0, grade: 1 });
+    e.endScene({ thr: 1.05, bloom: .55, exp: w.exposure * (1 + 2.4 * ((this.lightning && this.lightning.t) || 0) * (this.wr || 0)), dmg: this.hurtT * .8 + (D && D.dead ? .6 : 0), aber: .018 + (D ? D.boost * .03 : 0), tint: [1, 1, 1], sun, rayCol: [sc[0] / sm, sc[1] / sm, sc[2] / sm], rays: .55 * (1 - .75 * storm), speed: D && this.mode === 'play' ? clamp(D.boost * .9 + (D.speed - 60) / 120, 0, 1) : 0, grade: 1, rain: this.wr || 0, snowV: clamp(this.ws || 0, 0, 1) });
   }
   boltRenderable() {
     if (!this.bolts.length) return null; if (!this.boltMesh) { const g = new GB(); g.box(0, -.07, -1.8, .14, .14, 3.6, [.35, .25, .15], [2, 0]); g.pyramid(0, 0, 0, .3, .3, 1, [.6, .6, .65], [6, 0]); this.boltMesh = g.build(this.eng); this.boltM = new Float32Array(48 * 16); this.boltI = new Float32Array(48 * 4); this.eng.instances(this.boltMesh, this.boltM, this.boltI, 0); this.boltMat = this.eng.material('bolt', { defs: ['INST'], surf: `alb=vCol.rgb; spec=.3; emis=vec3(.2,.1,0);` }); }
