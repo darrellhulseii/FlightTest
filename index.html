@@ -1125,7 +1125,7 @@ float gheight(vec2 p){ float fx=clamp((p.x+${WS / 2}.)/uGH.z,0.,uGH.w-.001), fz=
   float fade=1.-smoothstep(.3*R,.9*R,dist); float keep=clamp((gm-.12)*3.-aInst.w*.55,0.,1.)*step(uGP.x+.9,gy);
   float sc=fade*keep*(.65+.75*aInst.z); float yw=aInst.x*6.2831, cy=cos(yw), sy=sin(yw);
   vec2 wv=vec2(sin(uTime*1.3+q.x*.18+q.y*.11)*.5+.5+.35*sin(uTime*2.7+q.x*.9+q.y*.4), cos(uTime*1.1+q.y*.15)*.3+.15)*.55; float hh2=lp.y*lp.y;
-  lp.x+=(cy*wv.x-sy*wv.y)*hh2/max(sc,.05)*.8; lp.z+=(sy*wv.x+cy*wv.y)*hh2/max(sc,.05)*.8;
+  lp.x+=(cy*wv.x-sy*wv.y)*hh2*.7; lp.z+=(sy*wv.x+cy*wv.y)*hh2*.7;
   M=mat4(cy*sc,0.,-sy*sc,0., 0.,sc*(.85+.3*aInst.y),0.,0., sy*sc,0.,cy*sc,0., q.x,gy-.06,q.y,1.); vInst=vec4(gcol,aInst.y); ln=vec3(0.,1.,0.); }`,
         surf: `float hh=clamp(vL.y/.85,0.,1.); vec3 g=vInst.rgb; float gl0=dot(g,vec3(.33)); g=mix(vec3(gl0),g,1.25);
   alb=g*mix(vec3(.78,.92,.42),vec3(1.4,1.45,.8),pow(hh,1.1))*(.88+.24*vInst.w)*1.25; alb*=1.-.04*smoothstep(.3,.0,hh); alb=mix(alb,alb*vec3(1.25,1.1,.6),smoothstep(.55,1.,vInst.w)*hh*.6); alb=mix(alb,vec3(.9,.94,1.),uSnowCov*(.35+.6*hh)); alb*=1.-.25*uWet;
