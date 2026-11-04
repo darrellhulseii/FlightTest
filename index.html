@@ -288,7 +288,9 @@ function loadDragon(json) {
   }
   const gi = (k, def) => { const e = genome[k]; return e && e.interpreted !== undefined ? e.interpreted : def; };
   const num = (k, def) => { const v = gi(k, def); return typeof v === 'number' ? v : (parseFloat(v) || def); };
-  const cc = (c) => { const o = clusters[c]; return o ? { rgb: hsv2rgb(o.hue, o.saturation, o.value), hue: o.hue, s: o.saturation, v: o.value, o } : { rgb: [.5, .5, .5], hue: 0, s: 0, v: .5, o: {} }; };
+  const DARKEN = { 6091: .76, 1201: .8, 5540: .8 }[d.id] || 1; // Fire, Emberwing, Cinderqueen render a touch darker and richer
+  const cc = (c) => { const o = clusters[c]; if (!o) return { rgb: [.5, .5, .5], hue: 0, s: 0, v: .5, o: {} }; const v = Math.min(1, o.value * DARKEN), sat = Math.min(1, o.saturation * (DARKEN < 1 ? 1.06 : 1)); return { rgb: hsv2rgb(o.hue, sat, v), hue: o.hue, s: sat, v, o }; };
+  const BOOST = DARKEN < 1 ? (n) => Math.max(n, 6) : (n) => n;
   const zones = ['Head', 'Neck', 'Torso', 'Tail', 'Wings', 'Legs'];
   const zm = (cl, k) => zones.map(z => { const v = clusters[cl] && clusters[cl]['zoneMask' + z]; return typeof v === 'number' ? v : 0.3; });
   const pat = zones.map(z => String(clusters.patternColorCluster && clusters.patternColorCluster['zonePattern' + z]) === 'true' ? 1 : 0);
@@ -297,9 +299,9 @@ function loadDragon(json) {
   return {
     json, house, magic, female: gi('sex', 'FEMALE') === 'FEMALE', temperament: gi('temperament', 'NORMAL'),
     size: num('size', 0.95), prof: num('magicProficiency', 1),
-    snout: num('snout', 2), horns: num('horns', 2), scales: num('scales', 3), headSpikes: num('headSpikes', 2), neckSpikes: num('neckSpikes', 2), backSpikes: num('backSpikes', 2),
-    armSpikes: num('armSpikes', 2), legSpikes: num('legSpikes', 2), tailSpikes: num('tailSpikes', 2), wingSkin: num('wingSkin', 3), wingClaws: num('wingClaws', 2),
-    tailLength: num('tailLength', 2), tailFin: num('tailFin', 2),
+    snout: num('snout', 2), horns: BOOST(num('horns', 2)), scales: num('scales', 3), headSpikes: BOOST(num('headSpikes', 2)), neckSpikes: BOOST(num('neckSpikes', 2)), backSpikes: BOOST(num('backSpikes', 2)),
+    armSpikes: BOOST(num('armSpikes', 2)), legSpikes: num('legSpikes', 2), tailSpikes: BOOST(num('tailSpikes', 2)), wingSkin: BOOST(num('wingSkin', 3)), wingClaws: BOOST(num('wingClaws', 2)),
+    tailLength: num('tailLength', 2), tailFin: BOOST(num('tailFin', 2)),
     wingStr: num('wingStrength', 2), tailStr: num('tailStrength', 2), chestStr: num('chestStrength', 2), legStr: num('legStrength', 2),
     primal: cc('primalColorCluster'), companion: cc('companionColorCluster'), pattern: cc('patternColorCluster'), eye: cc('eyeColorCluster'),
     pMask: zm('primalColorCluster'), cMask: zm('companionColorCluster'), tMask: zm('patternColorCluster'), tOn: pat,
@@ -594,7 +596,7 @@ void main(){
   if(uSpeed>.01){ vec3 acc=col; for(int i=1;i<=4;i++){ acc+=texture(uT,uv-c*uSpeed*.045*float(i)).rgb; } col=mix(col,acc/5.,clamp(r2*3.2,0.,1.)); }
   // unsharp mask for crisper detail
   vec2 tx=1./vec2(textureSize(uT,0)); vec3 bl4=(texture(uT,uv+vec2(tx.x,0)).rgb+texture(uT,uv-vec2(tx.x,0)).rgb+texture(uT,uv+vec2(0,tx.y)).rgb+texture(uT,uv-vec2(0,tx.y)).rgb)*.25;
-  vec3 dd=clamp(col-bl4,vec3(-.6),vec3(.6)); col+=dd*.32;
+  vec3 dd=clamp(col-bl4,vec3(-.6),vec3(.6)); col+=dd*.14;
   // screen-space god rays from the sun
   if(uRain>.001){ float rs=0.; float hvr=uRain*uRain; float hk=smoothstep(.3,.85,uRain); for(int k=0;k<3;k++){ float fk=float(k); float px=(uv.x+uv.y*.28*hvr)*(120.+fk*80.)*(1.15-.35*uRain+.2*fk*uRain); float cx=floor(px), fx=fract(px); float h=fract(sin(cx*12.9898+fk*78.233)*43758.5453); float y=fract(uv.y*(1.5+fk*.7)+uTime*(1.7+fk*.8+h*.8)+h*7.); float wd=smoothstep(.5,.4+.04*uRain,abs(fx-.5))*(.5+.5*uRain); rs+=wd*step(y,.07+.12*uRain)*(1.-y/(.07+.12*uRain))*step(.9-.4*uRain-.1*hvr,h)*(1.-.22*fk); }
     vec3 rc=mix(vec3(.52,.74,.97),vec3(.6,.67,.77),hk); col+=rc*rs*(.3+.35*uRain);
@@ -750,8 +752,8 @@ function sampleArr(a, t) { const n = a.length - 1, f = clamp(t, 0, 1) * n, i = M
 // ---- 04_world.js
 // ===== World: biomes, terrain, water, sky, vegetation, villages =====
 const BIOMES = {
-  EARTH: { name: 'Canyon Dusk', az: 2.35, el: .15, sunCol: '#ff9a58', sunI: 3.4, zen: '#141b46', mid: '#4a4a86', hor: '#e87c5a', amb: '#6a68a8', gnd: '#4a2e2a', fog: '#b4707c', fogSun: '#ffb272', fogDen: .00052, cloud: { cover: .66, lit: '#ffb890', shade: '#232850', h: 800 }, exp: 1.1,
-    grass: ['#6d7a38', '#8a7d44'], dry: '#a05c38', rock: '#6e4c3e', snow: null, dirt: '#8b6a48', crop: ['#c9a93f', '#7c8c3a', '#6d4a2a'], tree: 'broad', treeCols: ['#566b2c', '#7a7a36', '#8c5c2a'], pine: .25, water: ['#3a4a50', '#8a8c78'], hasWater: true, relief: 1.2, trees: .6, roofs: ['#9a4430', '#a68b50'] },
+  EARTH: { name: 'Canyon Dusk', az: 2.35, el: .15, sunCol: '#ff9a58', sunI: 3.4, zen: '#141b46', mid: '#3f4c82', hor: '#f08a52', amb: '#7c7aa0', gnd: '#503426', fog: '#c78a70', fogSun: '#ffbe78', fogDen: .00042, cloud: { cover: .66, lit: '#ffb890', shade: '#232850', h: 800 }, exp: 1.1,
+    grass: ['#6d7a38', '#8a7d44'], dry: '#a05c38', rock: '#6e4c3e', snow: null, dirt: '#8b6a48', crop: ['#c9a93f', '#7c8c3a', '#6d4a2a'], tree: 'broad', treeCols: ['#566b2c', '#7a7a36', '#8c5c2a'], pine: .25, water: ['#1d4450', '#5d8a80'], hasWater: true, relief: 1.2, trees: .6, roofs: ['#9a4430', '#a68b50'] },
   AIR: { name: 'Frostpeak', az: 1.1, el: .52, sunCol: '#fff0d8', sunI: 3.0, zen: '#2670d0', mid: '#6aa6e6', hor: '#c4dcf2', amb: '#7ba6d8', gnd: '#aab6c8', fog: '#b9d3ee', fogSun: '#fff0d0', fogDen: .00042, cloud: { cover: .5, lit: '#ffffff', shade: '#8aa6c8', h: 1000 }, exp: 1.0,
     grass: ['#8fa088', '#a9b4a4'], dry: '#9aa4a0', rock: '#767a80', snow: 130, dirt: '#8c7e6c', crop: ['#b4b890', '#98a486', '#8a8470'], tree: 'pine', treeCols: ['#2c4a3a', '#3a5a44', '#2a4034'], pine: 1, water: ['#2c5a78', '#7fb0c0'], hasWater: true, relief: 1.45, trees: .55, roofs: ['#5a5560', '#7a4a3a'] },
   WATER: { name: 'Mistwater', az: 0.5, el: .38, sunCol: '#dce8f4', sunI: 1.7, zen: '#5d6f80', mid: '#8496a6', hor: '#b5c3cd', amb: '#8a9cac', gnd: '#3a4640', fog: '#a9b9c4', fogSun: '#dfe8ee', fogDen: .0013, cloud: { cover: .86, lit: '#e4ecf2', shade: '#6d7e8e', h: 700 }, exp: 1.12,
@@ -1128,7 +1130,7 @@ float gheight(vec2 p){ float fx=clamp((p.x+${WS / 2}.)/uGH.z,0.,uGH.w-.001), fz=
   lp.x+=(cy*wv.x-sy*wv.y)*hh2*.7; lp.z+=(sy*wv.x+cy*wv.y)*hh2*.7;
   M=mat4(cy*sc,0.,-sy*sc,0., 0.,sc*(.85+.3*aInst.y),0.,0., sy*sc,0.,cy*sc,0., q.x,gy-.06,q.y,1.); vInst=vec4(gcol,aInst.y); ln=vec3(0.,1.,0.); }`,
         surf: `float hh=clamp(vL.y/.85,0.,1.); vec3 g=vInst.rgb; float gl0=dot(g,vec3(.33)); g=mix(vec3(gl0),g,1.25);
-  alb=g*mix(vec3(.78,.92,.42),vec3(1.4,1.45,.8),pow(hh,1.1))*(.88+.24*vInst.w)*1.25; alb*=1.-.04*smoothstep(.3,.0,hh); alb=mix(alb,alb*vec3(1.25,1.1,.6),smoothstep(.55,1.,vInst.w)*hh*.6); alb=mix(alb,vec3(.9,.94,1.),uSnowCov*(.35+.6*hh)); alb*=1.-.25*uWet;
+  alb=g*mix(vec3(.78,.92,.42),vec3(1.4,1.45,.8),pow(hh,1.1))*(.88+.24*vInst.w)*1.25; alb*=1.-.04*smoothstep(.3,.0,hh); alb=mix(alb,alb*vec3(1.25,1.1,.6),smoothstep(.55,1.,vInst.w)*hh*.6); { float wv2=sin(vW.x*.05+vW.z*.032+uTime*1.1)*.5+sin(vW.x*.13-vW.z*.09+uTime*1.9)*.25; alb*=1.+.09*wv2*hh; float fk=fract(vInst.w*37.1); float fl=step(.945,fk)*smoothstep(.72,.9,hh); float fh=fract(vInst.w*91.7); vec3 fc=fh<.4?vec3(1.,.97,.9):fh<.7?vec3(1.,.82,.2):fh<.88?vec3(.75,.5,.95):vec3(1.,.45,.5); alb=mix(alb,fc*.95,fl*(1.-uSnowCov)); emis+=fc*fl*.12; alb=mix(alb,alb*vec3(1.1,1.05,.8),smoothstep(.7,1.,fract(vInst.w*13.3))*.35); } alb=mix(alb,vec3(.9,.94,1.),uSnowCov*(.35+.6*hh)); alb*=1.-.25*uWet;
   N=normalize(mix(normalize(vN),vec3(0.,1.,0.),.8)); ao=.82+.18*hh; rough=.7; spec=.2; emis+=alb*uSkyAmb*.35;
   { vec3 Vv=normalize(uCam-vW); float tr=pow(max(dot(-Vv,uSunDir),0.),1.8)*(.25+.75*hh); emis+=alb*uSunCol*tr*.7; float fr=pow(1.-abs(dot(N,Vv)),3.); emis+=uSkyAmb*fr*.12*alb; }` }); }
     // rocks
@@ -1269,13 +1271,13 @@ const SKIN_SURF = `
   float pm=zsel(uPM0,uPM1,z), cm=zsel(uCM0,uCM1,z), tm=zsel(uTM0,uTM1,z), to=zsel(uTO0,uTO1,z);
   float bodyZ=1.-step(3.5,z); float hw=1.-step(.3,z); float cs=.23*mix(1.,mix(.62,1.,smoothstep(.8,2.2,z)),bodyZ)*(1.-.22*hw);
   float Nx=max(5.,floor(circ/cs+.5)); vec2 sp=vec2(around*Nx, arc/(cs*.78)); vec2 fA,fB,fD,fH,fM;
-  float dt=1.-smoothstep(.5,1.2,fwidth(sp.x)+fwidth(sp.y)); vec4 A=scl(sp,Nx,.25,fA);
+  float dt=1.-smoothstep(.2,.75,fwidth(sp.x)+fwidth(sp.y)); vec4 A=scl(sp,Nx,.25,fA);
   float bp=smoothstep(.4,.8,belly); float Nb=max(3.,floor(circ/(cs*3.4)+.5)); vec4 Bq=scl(vec2(around*Nb, arc/(cs*1.5)),Nb,0.,fB);
   float dw=(1.-smoothstep(.06,.15,abs(around-.25)))*bodyZ*(1.-bp)*(1.-hw); float Nd=max(2.,floor(circ*.3/(cs*1.8)+.5)); vec4 Dq=scl(vec2((around-.1)/.3*Nd, arc/(cs*1.5)),Nd+100.,1.,fD);
   float Nh=max(3.,floor(circ/(cs*2.6)+.5)); vec4 Hq=scl(vec2(around*Nh, arc/(cs*1.9)),Nh,.7,fH);
   vec4 S=mix(mix(mix(A,Bq,bp),Dq,dw),Hq,hw); float tlt=mix(mix(mix(stilt(A,fA),stilt(Bq,fB),bp),stilt(Dq,fD),dw),stilt(Hq,fH),hw);
   S.xyz=mix(vec3(.6,.3,.9),S.xyz,dt);
-  vec2 sp3=sp*3.; float dt2=dt*(1.-smoothstep(.5,1.2,fwidth(sp3.x)+fwidth(sp3.y))); float mic=scl(sp3,Nx*3.,0.,fM).x;
+  vec2 sp3=sp*3.; float dt2=dt*(1.-smoothstep(.2,.7,fwidth(sp3.x)+fwidth(sp3.y))); float mic=scl(sp3,Nx*3.,0.,fM).x;
   float wave=.5+.5*sin(arc*3.-uTime*9.+S.w*6.2831); float H=(S.x+tlt*dt)*(1.+uRuf*(.35+.65*wave))+.22*mic*dt2*(1.-bp*.6); S.y*=1.+uRuf*.8;
   float n1=fbm(vec2(arc*.16,around*1.3)), n2=fbm(vec2(arc*.09+7.,around*.9+3.)), n3=fbm(vec2(arc*1.1,around*7.)), grime=fbm(vec2(arc*.45+13.,around*3.5));
   vec3 col=uPrimal*(.55+.45*clamp(.35+pm*1.5,0.,1.));
@@ -1297,8 +1299,8 @@ const SKIN_SURF = `
   float band=smoothstep(.88,1.,sin(arc*.5-uTime*1.2+around*2.5)); emis+=col*band*S.y*dt*.4;
   float nv=clamp(dot(N,Vv),0.,1.); float fr=pow(1.-nv,3.); emis+=uSkyAmb*fr*.26*(.3+S.y*dt)+uSunCol*pow(1.-nv,4.)*max(dot(N,-uSunDir)+.2,0.)*.12*col;
   float gl=pow(max(dot(N,normalize(uSunDir+Vv)),0.),mix(40.,160.,fract(S.w*13.7)))*step(.5,S.w)*(.35+S.y)*dt*step(.0,nl); emis+=uSunCol*gl*(uComp*.5+.5)*.45;
-  emis+=col.gbr*fr0*.1*S.y*dt*(uSkyAmb+.1);
-  emis+=(.5+.5*cos(6.2831*(nv0*1.3+vec3(0.,.33,.67))))*fr0*S.y*dt*.14*(uSkyAmb+.15)*(uComp*.6+.4);`;
+  emis+=col.gbr*fr0*.04*S.y*dt*(uSkyAmb+.1);
+  emis+=(.5+.5*cos(6.2831*(nv0*1.3+vec3(0.,.33,.67))))*fr0*S.y*dt*.05*(uSkyAmb+.15)*(uComp*.6+.4);`;
 const MEM_SURF = `
   float t=vExt.y, sd=vUV.y, sec=vExt.x; float edge=min(t,1.-t);
   float cm=uCM1[1], pmv=uPM1[1], tm=uTM1[1];
@@ -1980,7 +1982,7 @@ class Game {
   updateCamera(dt) {
     const c = this.cam, D = this.D, S = this.dragon.S; let tgt, fwd;
     if (this.mode === 'menu') { if (!this.freezeCam) this.menuAng += dt * .1; const dist = (this.menuDist || 27) * S, y = D.pos[1] + 5; const a = this.menuAng; tgt = [D.pos[0], D.pos[1] + 2, D.pos[2]]; const p = [D.pos[0] + Math.sin(D.yaw + a) * dist * (1.1 + .25 * Math.sin(a * .7)), y + Math.sin(a * .8) * 4, D.pos[2] + Math.cos(D.yaw + a) * dist * 1.1]; c.pos = V3.lerp(c.pos, p, clamp(dt * 3, 0, 1)); c.look = tgt; c.fov = lerp(c.fov, .85, dt * 2); }
-    else { const camF = this.headingVec(this.camYaw, this.camPitch), dist = 25 * S * (1 + D.boost * .15), want = V3.add(V3.sub(D.pos, V3.mul(camF, dist)), [0, 6.5 * S, 0]); const gy = this.world.heightAt(want[0], want[2]) + 5; if (want[1] < gy) want[1] = gy; c.pos = V3.lerp(c.pos, want, clamp(dt * 9, 0, 1)); const sh = this.shake; this.shake = Math.max(0, this.shake - dt * 2.2); if (sh > 0) { c.pos[0] += (Math.random() - .5) * sh * 1.6; c.pos[1] += (Math.random() - .5) * sh * 1.6; } c.look = V3.add(c.pos, camF); c.fov = lerp(c.fov, 1.02 + D.boost * .22 + D.speed / 400, clamp(dt * 3, 0, 1)); }
+    else { const camF = this.headingVec(this.camYaw, this.camPitch), dist = 25 * S * (1 + D.boost * .15), want = V3.add(V3.sub(D.pos, V3.mul(camF, dist)), [0, 6.5 * S, 0]); const gy = this.world.heightAt(want[0], want[2]) + 5; if (want[1] < gy) want[1] = gy; c.pos = V3.lerp(c.pos, want, clamp(dt * 9, 0, 1)); const sh = this.shake; this.shake = Math.max(0, this.shake - dt * 2.2); if (sh > 0) { c.pos[0] += (Math.random() - .5) * sh * .7; c.pos[1] += (Math.random() - .5) * sh * .7; } c.look = V3.add(c.pos, camF); c.fov = lerp(c.fov, 1.05, clamp(dt * 3, 0, 1)); }
     if (this.debugCam) { c.pos = this.debugCam.pos.slice(); c.look = this.debugCam.look.slice(); }
     const e = this.eng, asp = e.W / e.H; M4.persp(c.proj, c.fov, asp, .6, 9000); M4.look(c.view, c.pos, c.look, [0, 1, 0]); M4.mul(c.vp, c.proj, c.view); M4.inv(c.invVP, c.vp); c.px = e.H * .5 / Math.tan(c.fov / 2); e.G.uVP = c.vp; e.G.uCam = c.pos;
   }
@@ -2003,7 +2005,7 @@ class Game {
     const sd = G.uSunDir, sp = [c.pos[0] + sd[0] * 2000, c.pos[1] + sd[1] * 2000, c.pos[2] + sd[2] * 2000], vp = c.vp, cw = vp[3] * sp[0] + vp[7] * sp[1] + vp[11] * sp[2] + vp[15]; let sun = [.5, .5, 0];
     if (cw > 1) { const sx = (vp[0] * sp[0] + vp[4] * sp[1] + vp[8] * sp[2] + vp[12]) / cw * .5 + .5, sy = (vp[1] * sp[0] + vp[5] * sp[1] + vp[9] * sp[2] + vp[13]) / cw * .5 + .5; sun = [sx, sy, clamp(1.3 - Math.hypot(sx - .5, sy - .5) * 1.4, 0, 1)]; }
     const sc = G.uSunCol, sm = Math.max(sc[0], sc[1], sc[2], 1e-3); const storm = Math.max(w.wSnow || 0, w.wAsh || 0);
-    e.endScene({ thr: 1.05, bloom: .55, exp: w.exposure * (1 + 2.4 * ((this.lightning && this.lightning.t) || 0) * (this.wr || 0)), dmg: this.hurtT * .8 + (D && D.dead ? .6 : 0), aber: .018 + (D ? D.boost * .03 : 0), tint: [1, 1, 1], sun, rayCol: [sc[0] / sm, sc[1] / sm, sc[2] / sm], rays: .55 * (1 - .75 * storm), speed: D && this.mode === 'play' ? clamp(D.boost * .9 + (D.speed - 60) / 120, 0, 1) : 0, grade: 1, rain: this.wr || 0, snowV: clamp(this.ws || 0, 0, 1) });
+    e.endScene({ thr: 1.05, bloom: .55, exp: w.exposure * (1 + 2.4 * ((this.lightning && this.lightning.t) || 0) * (this.wr || 0)), dmg: this.hurtT * .8 + (D && D.dead ? .6 : 0), aber: 0, tint: [1, 1, 1], sun, rayCol: [sc[0] / sm, sc[1] / sm, sc[2] / sm], rays: .55 * (1 - .75 * storm), speed: 0, grade: 1, rain: this.wr || 0, snowV: clamp(this.ws || 0, 0, 1) });
   }
   boltRenderable() {
     if (!this.bolts.length) return null; if (!this.boltMesh) { const g = new GB(); g.box(0, -.07, -1.8, .14, .14, 3.6, [.35, .25, .15], [2, 0]); g.pyramid(0, 0, 0, .3, .3, 1, [.6, .6, .65], [6, 0]); this.boltMesh = g.build(this.eng); this.boltM = new Float32Array(48 * 16); this.boltI = new Float32Array(48 * 4); this.eng.instances(this.boltMesh, this.boltM, this.boltI, 0); this.boltMat = this.eng.material('bolt', { defs: ['INST'], surf: `alb=vCol.rgb; spec=.3; emis=vec3(.2,.1,0);` }); }
