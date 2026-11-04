@@ -1271,20 +1271,20 @@ const SKIN_SURF = `
   float pm=zsel(uPM0,uPM1,z), cm=zsel(uCM0,uCM1,z), tm=zsel(uTM0,uTM1,z), to=zsel(uTO0,uTO1,z);
   float bodyZ=1.-step(3.5,z); float hw=1.-step(.3,z); float cs=.23*mix(1.,mix(.62,1.,smoothstep(.8,2.2,z)),bodyZ)*(1.-.22*hw);
   float Nx=max(5.,floor(circ/cs+.5)); vec2 sp=vec2(around*Nx, arc/(cs*.78)); vec2 fA,fB,fD,fH,fM;
-  float dt=1.-smoothstep(.2,.75,fwidth(sp.x)+fwidth(sp.y)); vec4 A=scl(sp,Nx,.25,fA);
+  float dt=1.-smoothstep(.12,.5,fwidth(sp.x)+fwidth(sp.y)); vec4 A=scl(sp,Nx,.25,fA);
   float bp=smoothstep(.4,.8,belly); float Nb=max(3.,floor(circ/(cs*3.4)+.5)); vec4 Bq=scl(vec2(around*Nb, arc/(cs*1.5)),Nb,0.,fB);
   float dw=(1.-smoothstep(.06,.15,abs(around-.25)))*bodyZ*(1.-bp)*(1.-hw); float Nd=max(2.,floor(circ*.3/(cs*1.8)+.5)); vec4 Dq=scl(vec2((around-.1)/.3*Nd, arc/(cs*1.5)),Nd+100.,1.,fD);
   float Nh=max(3.,floor(circ/(cs*2.6)+.5)); vec4 Hq=scl(vec2(around*Nh, arc/(cs*1.9)),Nh,.7,fH);
   vec4 S=mix(mix(mix(A,Bq,bp),Dq,dw),Hq,hw); float tlt=mix(mix(mix(stilt(A,fA),stilt(Bq,fB),bp),stilt(Dq,fD),dw),stilt(Hq,fH),hw);
   S.xyz=mix(vec3(.6,.3,.9),S.xyz,dt);
-  vec2 sp3=sp*3.; float dt2=dt*(1.-smoothstep(.2,.7,fwidth(sp3.x)+fwidth(sp3.y))); float mic=scl(sp3,Nx*3.,0.,fM).x;
+  vec2 sp3=sp*3.; float dt2=dt*(1.-smoothstep(.1,.42,fwidth(sp3.x)+fwidth(sp3.y))); float mic=scl(sp3,Nx*3.,0.,fM).x;
   float wave=.5+.5*sin(arc*3.-uTime*9.+S.w*6.2831); float H=(S.x+tlt*dt)*(1.+uRuf*(.35+.65*wave))+.22*mic*dt2*(1.-bp*.6); S.y*=1.+uRuf*.8;
   float n1=fbm(vec2(arc*.16,around*1.3)), n2=fbm(vec2(arc*.09+7.,around*.9+3.)), n3=fbm(vec2(arc*1.1,around*7.)), grime=fbm(vec2(arc*.45+13.,around*3.5));
   vec3 col=uPrimal*(.55+.45*clamp(.35+pm*1.5,0.,1.));
   float cw=smoothstep((1.-cm)-.07,(1.-cm)+.07,n1*1.15); col=mix(col,uComp,cw*.92);
   float stripe=.5+.5*sin(arc*1.5+around*6.2831*2.+n2*5.); float pn=mix(n2,stripe,.45); float pw=smoothstep((1.-tm)-.06,(1.-tm)+.06,pn)*to; col=mix(col,uPat,pw*.9);
   col=mix(col,uComp*1.15+.08,bp*.85); col*=mix(1.,.72,dw*.6);
-  { float dors=1.-smoothstep(0.,.32,abs(around-.25)); col*=1.-.3*dors*(1.-hw)*(1.-bp); float lum=dot(col,vec3(.3,.59,.11)); col=mix(vec3(lum),col,1.4); col*=.9+.35*smoothstep(.45,.75,n2)*(1.-bp); }
+  { float dors=1.-smoothstep(0.,.32,abs(around-.25)); col*=1.-.3*dors*(1.-hw)*(1.-bp); float lum=dot(col,vec3(.3,.59,.11)); col=mix(vec3(lum),col,1.1); col*=.9+.35*smoothstep(.45,.75,n2)*(1.-bp); }
   vec3 sc=col*mix(.95,.88+.24*S.w,dt)*(.84+.3*smoothstep(0.,.7,S.x)); sc=mix(sc,sc*vec3(1.1,.95,.8)+uComp*.04,smoothstep(.55,1.,S.w)*.5*dt);
   sc*=.82+.3*grime; float scar=smoothstep(.62,.7,fbm(vec2(arc*2.3,around*11.))); sc=mix(sc,sc*1.5+.03,scar*.35*dt);
   sc=mix(sc,sc*vec3(1.25,1.2,.85)+.015,S.y*.3*dt);
@@ -1317,7 +1317,7 @@ const MEM_SURF = `
   col*=1.-vein*.6; col*=.82+.3*web;
   alb=col; N=bumpN(N,vW,web*.5+fv*.5+vein*.4+.35*(.5+.5*cos(t*6.2831))*smoothstep(.05,.5,sd)+.1*cap,.6); rough=.55; spec=.35; ao=.85;
   float bl=max(-dot(normalize(vN)*(gl_FrontFacing?1.:-1.),uSunDir),0.);
-  emis=alb*uSunCol*bl*.6*(.5+.7*web)*(1.-.5*cap)*vec3(1.1,.9,.8)+uComp*bl*.22+alb*uComp*.03;
+  emis=alb*uSunCol*bl*.85*(.5+.7*web)*(1.-.5*cap)*vec3(1.28,.86,.6)+uComp*bl*.2+alb*uComp*.03+alb*vec3(1.,.5,.2)*uHeat*.5;
   alb=mix(alb,vec3(.9,.05,.02),uHurt*.4);`;
 
 class Dragon {
@@ -1590,21 +1590,26 @@ class Pool {
   constructor(eng, N, additive, snowMode) {
     this.e = eng; this.N = N; this.add = additive; this.snowMode = snowMode ? 1 : 0; this.i = 0; const f = (n) => new Float32Array(n * N);
     this.pos = f(3); this.vel = f(3); this.life = f(1); this.max = f(1); this.s0 = f(1); this.s1 = f(1); this.c0 = f(3); this.c1 = f(3); this.a0 = f(1); this.drag = f(1); this.grav = f(1); this.seed = f(1);
-    this.gpos = f(3); this.gcol = f(4); this.gext = f(4); this.life.fill(0); this.gcol.fill(0);
+    this.kind = f(1); this.gpos = f(3); this.gcol = f(4); this.gext = f(4); this.life.fill(0); this.gcol.fill(0);
     this.mesh = eng.mesh({ pos: this.gpos, col: this.gcol, ext: this.gext }, ['pos', 'col', 'ext']); this.mesh.n = N;
-    const gl = eng.gl, vs = `#version 300 es\nprecision highp float; layout(location=0) in vec3 aPos; layout(location=3) in vec4 aCol; layout(location=4) in vec4 aExt; uniform mat4 uVP; uniform float uPx; uniform float uMax; out vec4 vC; out float vS;
-void main(){ vec4 p=uVP*vec4(aPos,1.); gl_Position=p; float sz=aExt.x*uPx/max(p.w,.1); gl_PointSize=clamp(sz,0.,uMax); vC=aCol; vS=aExt.y; if(aCol.a<=0.001||sz<.5) gl_Position=vec4(2.,2.,2.,1.); }`;
-    const fs = `#version 300 es\nprecision highp float; in vec4 vC; in float vS; uniform float uTime; uniform float uAdd; uniform float uSnow; layout(location=0) out vec4 o;\n
+    const gl = eng.gl, vs = `#version 300 es\nprecision highp float; layout(location=0) in vec3 aPos; layout(location=3) in vec4 aCol; layout(location=4) in vec4 aExt; uniform mat4 uVP; uniform float uPx; uniform float uMax; out vec4 vC; out float vS; out float vK;
+void main(){ vec4 p=uVP*vec4(aPos,1.); gl_Position=p; float sz=aExt.x*uPx/max(p.w,.1); gl_PointSize=clamp(sz,0.,uMax); vC=aCol; vS=aExt.y; vK=aExt.z; if(aCol.a<=0.001||sz<.5) gl_Position=vec4(2.,2.,2.,1.); }`;
+    const fs = `#version 300 es\nprecision highp float; in vec4 vC; in float vS; in float vK; uniform float uTime; uniform float uAdd; uniform float uSnow; layout(location=0) out vec4 o;\n
 float h12(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }
 float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h12(i),h12(i+vec2(1,0)),f.x),mix(h12(i+vec2(0,1)),h12(i+vec2(1,1)),f.x),f.y); }
 void main(){ vec2 p=gl_PointCoord*2.-1.; float r=length(p); if(r>1.) discard;
-  if(uSnow>.5){ float ang=vS*40.+uTime*(.4+vS); float cs=cos(ang), sn=sin(ang); vec2 q=vec2(cs*p.x-sn*p.y, sn*p.x+cs*p.y); float aa=atan(q.y,q.x); float arm=pow(abs(cos(aa*3.)),6.); float sh=smoothstep(.12+.8*arm,.0,r*.95-.0); float core=smoothstep(.45,.0,r); float al2=vC.a*clamp(sh*.9+core*.8,0.,1.)*smoothstep(1.,.75,r); float tw=.8+.5*pow(.5+.5*sin(uTime*5.+vS*80.),4.); o=vec4(vC.rgb*(.85+.3*core)*tw,al2); return; } float n=vn(p*2.2+vS*17.+uTime*(.6+vS)); float a=smoothstep(1.,.15,r+(n-.5)*.55); a*=a; float al=vC.a*a;
-  if(uAdd>.5) o=vec4(vC.rgb*al,al); else o=vec4(vC.rgb,al); }`;
+  if(uSnow>.5){ float ang=vS*40.+uTime*(.4+vS); float cs=cos(ang), sn=sin(ang); vec2 q=vec2(cs*p.x-sn*p.y, sn*p.x+cs*p.y); float aa=atan(q.y,q.x); float arm=pow(abs(cos(aa*3.)),6.); float sh=smoothstep(.12+.8*arm,.0,r*.95-.0); float core=smoothstep(.45,.0,r); float al2=vC.a*clamp(sh*.9+core*.8,0.,1.)*smoothstep(1.,.75,r); float tw=.8+.5*pow(.5+.5*sin(uTime*5.+vS*80.),4.); o=vec4(vC.rgb*(.85+.3*core)*tw,al2); return; } if(vK>1.5){ float g=exp(-r*r*3.4); float al=vC.a*g; o=uAdd>.5?vec4(vC.rgb*al,al):vec4(vC.rgb,al); return; }
+  if(vK>.5){ float g=smoothstep(1.,0.,r); g=g*g*g; float al=vC.a*g; o=vec4(vC.rgb*(1.+2.5*g)*al,al); return; }
+  if(uAdd>.5){ float tt=uTime*(1.1+vS*.8); vec2 q=p*1.5+vS*31.; vec2 w=vec2(vn(q+vec2(0.,tt*1.6)),vn(q*1.4+vec2(7.1,-tt*.9)))-.5; float n=vn(q*1.7+w*2.2+vec2(0.,-tt*2.4)); float n2=vn(q*3.9-w*2.8+tt*.7);
+    float d=r+(n-.5)*.78+(n2-.5)*.3; float body=smoothstep(1.,.04,d); float core=smoothstep(.55,-.1,d); float al=vC.a*body*body;
+    vec3 fc=vC.rgb*(.72+.55*n2)+vec3(1.,.78,.42)*core*core*(.35+vC.a*2.2); o=vec4(fc*al,al); return; }
+  float n=vn(p*2.2+vS*17.+uTime*(.6+vS)); float n3=vn(p*5.1-vS*9.+uTime*.3); float a=smoothstep(1.,.12,r+(n-.5)*.6+(n3-.5)*.2); a*=a; float al=vC.a*a;
+  o=vec4(vC.rgb*(.8+.4*n3),al); }`;
     this.prog = eng.link(vs, fs, 'particles');
   }
-  spawn(x, y, z, vx, vy, vz, life, s0, s1, c0, c1, a0, drag, grav) {
+  spawn(x, y, z, vx, vy, vz, life, s0, s1, c0, c1, a0, drag, grav, kind) {
     const i = this.i; this.i = (i + 1) % this.N; const k = i * 3; this.pos[k] = x; this.pos[k + 1] = y; this.pos[k + 2] = z; this.vel[k] = vx; this.vel[k + 1] = vy; this.vel[k + 2] = vz; this.life[i] = life; this.max[i] = life; this.s0[i] = s0; this.s1[i] = s1;
-    this.c0[k] = c0[0]; this.c0[k + 1] = c0[1]; this.c0[k + 2] = c0[2]; this.c1[k] = c1[0]; this.c1[k + 1] = c1[1]; this.c1[k + 2] = c1[2]; this.a0[i] = a0; this.drag[i] = drag; this.grav[i] = grav; this.seed[i] = Math.random(); return i;
+    this.c0[k] = c0[0]; this.c0[k + 1] = c0[1]; this.c0[k + 2] = c0[2]; this.c1[k] = c1[0]; this.c1[k + 1] = c1[1]; this.c1[k + 2] = c1[2]; this.a0[i] = a0; this.drag[i] = drag; this.grav[i] = grav; this.kind[i] = kind || 0; this.seed[i] = Math.random(); return i;
   }
   update(dt, ground) {
     const N = this.N, P = this.pos, V = this.vel, GP = this.gpos, GC = this.gcol, GE = this.gext;
@@ -1614,7 +1619,7 @@ void main(){ vec2 p=gl_PointCoord*2.-1.; float r=length(p); if(r>1.) discard;
       if (ground && this.add) { const gy = ground(P[k], P[k + 2]) + .3; if (P[k + 1] < gy) { P[k + 1] = gy; V[k + 1] = Math.abs(V[k + 1]) * .15; V[k] *= .8; V[k + 2] *= .8; } }
       GP[k] = P[k]; GP[k + 1] = P[k + 1]; GP[k + 2] = P[k + 2];
       const c0 = this.c0, c1 = this.c1, m = clamp(t * 1.4, 0, 1); GC[i * 4] = c0[k] + (c1[k] - c0[k]) * m; GC[i * 4 + 1] = c0[k + 1] + (c1[k + 1] - c0[k + 1]) * m; GC[i * 4 + 2] = c0[k + 2] + (c1[k + 2] - c0[k + 2]) * m;
-      GC[i * 4 + 3] = this.a0[i] * smooth(0, .12, t) * Math.pow(1 - t, this.add ? 1.3 : .8); GE[i * 4] = this.s0[i] + (this.s1[i] - this.s0[i]) * Math.sqrt(t); GE[i * 4 + 1] = this.seed[i];
+      GC[i * 4 + 3] = this.a0[i] * smooth(0, .12, t) * Math.pow(1 - t, this.add ? 1.3 : .8); GE[i * 4] = this.s0[i] + (this.s1[i] - this.s0[i]) * Math.sqrt(t); GE[i * 4 + 1] = this.seed[i]; GE[i * 4 + 2] = this.kind[i];
     }
     this.e.upd(this.mesh, 'pos', GP); this.e.upd(this.mesh, 'col', GC); this.e.upd(this.mesh, 'ext', GE);
   }
@@ -1629,7 +1634,9 @@ class FX {
     if (r() < .2) this.smoke.spawn(o[0], o[1], o[2], (d[0] + rx) * 30 + vel[0] * .5, (d[1] + ry) * 30 + 3, (d[2] + rz) * 30 + vel[2] * .5, 1.4 + r(), 2, 9, [.3, .3, .3].map(v => v * (1 - F.smoke * .5)), [.05, .05, .05], .22 + F.smoke * .4, 1.2, -1);
     if (r() < .12) this.fire.spawn(o[0], o[1], o[2], (d[0] + rx * 3) * 40 + vel[0], (d[1] + ry * 3) * 40 + vel[1] + 3, (d[2] + rz * 3) * 40 + vel[2], 1 + r(), .2, .12, [2, 1.6, .8], F.mid, .5, .3, 9);
   }
-  flame(x, y, z, size) { const r = this.rnd; this.fire.spawn(x, y, z, (r() - .5) * 2, 3 + r() * 4, (r() - .5) * 2, .8 + r() * .9, size * .8, size * 2.6, [2.4, 1.7, .6], [.5, .06, .02], .85, .6, -3); }
+  flame(x, y, z, size) { const r = this.rnd; this.fire.spawn(x, y, z, (r() - .5) * 2.6, 3 + r() * 5, (r() - .5) * 2.6, .8 + r() * .9, size * .9, size * 3, [2.6, 1.9, .7], [.55, .07, .02], .8, .7, -4.5); }
+  glow(x, y, z, size, col, life, a, s1) { this.fire.spawn(x, y, z, 0, 0, 0, life, size, s1 || size * 1.1, col, col.map(v => v * .5), a, 0, 0, 2); }
+  spark(x, y, z, vx, vy, vz, life, col) { const F = this.fl; this.fire.spawn(x, y, z, vx, vy, vz, life, .3 + this.rnd() * .25, .06, col || F.core.map(v => v * 1.3), F.mid, 1, .45, 16, 1); }
   smokePuff(x, y, z, size, dark) { const r = this.rnd, g = dark ? .045 : .2; this.smoke.spawn(x, y, z, (r() - .5) * 2.2, 4 + r() * 4, (r() - .5) * 2.2, 5 + r() * 4, size * .6, size * 3.2, [g * 1.4, g * 1.3, g * 1.2], [g * .5, g * .5, g * .5], .55, .35, -.4); }
   ember(x, y, z) { const r = this.rnd; this.fire.spawn(x, y, z, (r() - .5) * 10, 6 + r() * 12, (r() - .5) * 10, 1.5 + r() * 2.5, .35, .1, [3, 1.4, .3], [.8, .1, .02], 1, .4, 3); }
   burst(x, y, z, n, col, speed, size) { const r = this.rnd; for (let i = 0; i < n; i++) { const a = r() * TAU, b = (r() - .5) * 2, k = Math.sqrt(1 - b * b); this.fire.spawn(x, y, z, Math.cos(a) * k * speed * (.4 + r()), b * speed * (.4 + r()) + 4, Math.sin(a) * k * speed * (.4 + r()), .6 + r() * 1., size * .7, size * 2.4, col, col.map(v => v * .12), .9, 1.2, 6); } }
@@ -1896,6 +1903,8 @@ class Game {
       D.fuel -= cost; this.fbCD = .42 / this.pk.rate; const R = 7 * Math.sqrt(T.size), sp = 150, sd = [o[0] + d[0] * 5, o[1] + d[1] * 5, o[2] + d[2] * 5];
       this.fireballs.push({ p: sd, v: [d[0] * sp + D.vel[0] * .5, d[1] * sp + D.vel[1] * .5 + 2, d[2] * sp + D.vel[2] * .5], t: 0, R }); this.sfx.boom(.4); this.dragon.shot(); this.shake = Math.max(this.shake, .25);
       fx.burst(sd[0], sd[1], sd[2], 8, fx.fl.mid.map(v => v * .5), 22, 1.2);
+      fx.glow(sd[0], sd[1], sd[2], 7, fx.fl.core.map(v => v * 1.1), .16, .8, 11); for (let n = 0; n < 26; n++) fx.spark(sd[0], sd[1], sd[2], (d[0] + (r() - .5) * .9) * (30 + r() * 70) + D.vel[0] * .5, (d[1] + (r() - .5) * .9) * (30 + r() * 70) + 3, (d[2] + (r() - .5) * .9) * (30 + r() * 70) + D.vel[2] * .5, .35 + r() * .5);
+      for (let n = 0; n < 14; n++) fx.fire.spawn(sd[0] + (r() - .5), sd[1] + (r() - .5), sd[2] + (r() - .5), (d[0] + (r() - .5) * .5) * (40 + r() * 40), (d[1] + (r() - .5) * .5) * (40 + r() * 40) + 2, (d[2] + (r() - .5) * .5) * (40 + r() * 40), .3 + r() * .3, 1.4, 5 + r() * 2, fx.fl.mid, fx.fl.end, .35, 1.8, -2);
     }
   }
   simFireballs(dt) {
@@ -1908,17 +1917,27 @@ class Game {
         else for (const v of w.villages) { if (Math.hypot(f.p[0] - v.cx, f.p[2] - v.cz) > v.R + 60) continue; for (const b of v.buildings) { if (b.dead || b.type === 'wall' || b.minor) continue; const dx = f.p[0] - b.x, dz = f.p[2] - b.z, rad = b.r * .85 + f.R * .5; if (dx * dx + dz * dz < rad * rad && f.p[1] < b.y + b.top * (1 - .8 * b.collapse) + f.R * .5) { hit = true; f.direct = b; break; } } if (hit) break; }
       }
       const R = f.R, P = f.p, nd = V3.norm(f.v), j = (k) => (r() - .5) * k;
-      for (let n = Math.floor(100 * dt + r()); n > 0; n--) fx.fire.spawn(P[0] + j(R * .5), P[1] + j(R * .5), P[2] + j(R * .5), j(4), j(4), j(4), .12 + r() * .14, R * 1.4, R * 2.0, col.mid.map(v => v * 1.1), col.end, .4, 2.5, 0);
-      fx.fire.spawn(P[0], P[1], P[2], 0, 0, 0, .09, R * .8, R * .9, col.core.map(v => v * 1.1), col.mid, .6, 0, 0);
-      for (let n = Math.floor(110 * dt + r()); n > 0; n--) { const k = r() * R * 1.6; fx.fire.spawn(P[0] - nd[0] * k + j(R * .6), P[1] - nd[1] * k + j(R * .6), P[2] - nd[2] * k + j(R * .6), -nd[0] * (6 + r() * 16) + j(6), -nd[1] * (6 + r() * 16) + 3 + j(6), -nd[2] * (6 + r() * 16) + j(6), .5 + r() * .8, R * .8, R * 2.2, col.mid, col.end, .15, 1.3, -1.5); }
+      { const hot = col.core.map(v => v * 1.3), mid = col.mid.map(v => v * 1.15), ph = f.t * 9;
+        fx.fire.spawn(P[0], P[1], P[2], 0, 0, 0, .07, R * 4.6, R * 5, col.mid.map(v => v * .32), col.mid.map(v => v * .2), .5, 0, 0, 2); // wide light halo
+        fx.fire.spawn(P[0], P[1], P[2], 0, 0, 0, .08, R * 2.0, R * 2.2, hot, col.core, .95, 0, 0, 2); // white-hot heart
+        for (let n = Math.floor(150 * dt + r()); n > 0; n--) { const a = r() * TAU, b = r() * 2 - 1, k = Math.sqrt(1 - b * b), q = R * (.25 + r() * .5); fx.fire.spawn(P[0] + Math.cos(a) * k * q, P[1] + b * q, P[2] + Math.sin(a) * k * q, j(6) - nd[0] * 4, j(6) - nd[1] * 4, j(6) - nd[2] * 4, .16 + r() * .18, R * 1.5, R * 2.5, mid, col.end, .5, 2.5, -3); } // roiling body
+        for (let n = Math.floor(170 * dt + r()); n > 0; n--) { const k = r() * R * 2.2, sp = 8 + r() * 24; fx.fire.spawn(P[0] - nd[0] * k + j(R * .6), P[1] - nd[1] * k + j(R * .6), P[2] - nd[2] * k + j(R * .6), -nd[0] * sp + j(9), -nd[1] * sp + j(9), -nd[2] * sp + j(9), .5 + r() * .95, R * .9, R * 2.7, mid, col.end, .24, 1.4, -4.5); } // flame tongues peeling off the tail
+        for (let n = Math.floor(80 * dt + r()); n > 0; n--) { const sp = 10 + r() * 38; fx.spark(P[0] + j(R), P[1] + j(R), P[2] + j(R), -nd[0] * sp + j(26), -nd[1] * sp + j(26) + 8, -nd[2] * sp + j(26), .5 + r() * 1., hot); } // trailing sparks
+        if (r() < dt * 70) fx.smoke.spawn(P[0] - nd[0] * R * 2, P[1] - nd[1] * R * 2, P[2] - nd[2] * R * 2, j(3), 1 + r() * 2, j(3), 1.4 + r() * 1.2, R * .9, R * 3.4, [.2, .17, .15].map(v => v * (1 - col.smoke * .5)), [.05, .05, .05], .3 + col.smoke * .3, 1.1, -.6); // sooty wake
+      }
       if (r() < dt * 60) fx.smokePuff(P[0] - nd[0] * R, P[1] - nd[1] * R, P[2] - nd[2] * R, R * 1.7, true); if (r() < dt * 40) fx.ember(P[0] + j(R), P[1] + j(R), P[2] + j(R));
       if (hit || f.t > 4) { this.fireballs.splice(i, 1); if (hit) this.explode(P, R, f.direct); }
     }
   }
   explode(P, R0, direct) {
     const w = this.world, fx = this.fx, st = this.st, T = this.T, r = Math.random, col = fx.fl, BR = 42 * Math.sqrt(st.dmg) * (.95 + .08 * T.prof) * this.pk.blast, gy = w.heightAt(P[0], P[2]);
-    fx.burst(P[0], gy + 4, P[2], 110, col.core.map(v => v * .9), 46, 6); fx.burst(P[0], gy + 4, P[2], 60, col.mid, 28, 9); fx.ring(P[0], gy + 1.2, P[2], BR * 1.1, col.mid.map(v => v * 1.2), 90);
-    for (let i = 0; i < 34; i++) fx.flame(P[0] + (r() - .5) * BR * .9, gy + 1 + r() * 6, P[2] + (r() - .5) * BR * .9, 6 + r() * 8);
+    const sc = BR / 42; fx.burst(P[0], gy + 4, P[2], 60, col.core.map(v => v * .9), 46, 5); fx.ring(P[0], gy + 1.2, P[2], BR * 1.1, col.mid.map(v => v * 1.2), 90);
+    fx.glow(P[0], gy + 6, P[2], BR * 1.5, col.core.map(v => v * 1.6), .22, .9, BR * 2.8); fx.glow(P[0], gy + 8, P[2], BR * .9, col.mid.map(v => v * 1.2), .5, .55, BR * 1.7); // flash + afterglow
+    for (let i = 0; i < 56; i++) { const a = r() * TAU, b = r() * 1.3 - .25, k = Math.sqrt(Math.max(0, 1 - b * b)), sp = (8 + r() * 24) * sc; fx.fire.spawn(P[0], gy + 4, P[2], Math.cos(a) * k * sp, Math.abs(b) * sp * 1.2 + 10 * sc, Math.sin(a) * k * sp, .8 + r() * .9, (5 + r() * 4) * sc, (14 + r() * 10) * sc, col.core.map(v => v * .85), col.end, .5, 1.8, -6); } // billowing fireball
+    for (let i = 0; i < 26; i++) fx.fire.spawn(P[0] + (r() - .5) * BR * .25, gy + 3 + i * .7, P[2] + (r() - .5) * BR * .25, (r() - .5) * 5, (18 + r() * 28) * sc, (r() - .5) * 5, 1.2 + r() * 1.3, (5 + r() * 3) * sc, (14 + r() * 8) * sc, col.mid, col.end, .32, 1.2, -3); // rising column
+    for (let i = 0; i < 150; i++) { const a = r() * TAU, b = r() * .95, k = Math.sqrt(1 - b * b), sp = 25 + r() * 75; fx.spark(P[0], gy + 3, P[2], Math.cos(a) * k * sp, b * sp + 12, Math.sin(a) * k * sp, .8 + r() * 1.5, col.core.map(v => v * 1.3)); } // sparks (they fall back under gravity)
+    for (let i = 0; i < 44; i++) { const a = i / 44 * TAU + r() * .1, sp = BR / 1.0 * (.55 + r() * .5); fx.smoke.spawn(P[0], gy + 1.5, P[2], Math.cos(a) * sp, 1 + r() * 3, Math.sin(a) * sp, 1.3 + r() * .9, 3 * sc, 14 * sc, [.5, .42, .33], [.22, .19, .15], .38, 2.2, 0); } // shockwave dust ring
+    for (let i = 0; i < 44; i++) fx.flame(P[0] + (r() - .5) * BR * .9, gy + 1 + r() * 6, P[2] + (r() - .5) * BR * .9, 6 + r() * 8);
     for (let i = 0; i < 10; i++) fx.smokePuff(P[0] + (r() - .5) * BR * .6, gy + 4 + r() * 8, P[2] + (r() - .5) * BR * .6, 16 + r() * 14, true); for (let i = 0; i < 14; i++) fx.ember(P[0] + (r() - .5) * 10, gy + 3, P[2] + (r() - .5) * 10);
     this.sfx.boom(1.2); const cp = this.cam.pos, dc = Math.hypot(P[0] - cp[0], P[1] - cp[1], P[2] - cp[2]); this.shake = Math.max(this.shake, clamp(1 - dc / 420, 0, 1) * .9); this.expl = { t: 1, p: [P[0], gy + 8, P[2]], col: col.mid };
     w.scorch(P[0], P[2], BR * .5); w.scorch(P[0] + (r() - .5) * BR * .5, P[2] + (r() - .5) * BR * .5, BR * .35); w.igniteTrees(P[0], P[2], BR * .9); if (this.patches.length < 30) for (let i = 0; i < 4; i++) this.patches.push({ x: P[0] + (r() - .5) * BR, y: gy, z: P[2] + (r() - .5) * BR, t: 5 + r() * 5 });
