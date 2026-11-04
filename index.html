@@ -62,7 +62,7 @@ select,input[type=range],button,textarea{font:inherit;color:inherit}select,texta
   <div id="mR" class="col">
     <div class="card"><h3>Flight settings</h3>
       <div class="row"><label>Valley</label><select id="sBiome"><option value="AUTO">From hatch season</option><option value="EARTH">Canyon Dusk</option><option value="AIR">Frostpeak</option><option value="WATER">Mistwater</option><option value="FIRE">Emberlands</option></select></div>
-      <div class="row"><label>Quality</label><select id="sQ"><option value="auto">Auto</option><option value="low">Low</option><option value="med">Medium</option><option value="high">High</option></select></div>
+      <div class="row"><label>Quality</label><select id="sQ"><option value="auto">Auto</option><option value="low">Low</option><option value="med">Medium</option><option value="high">High</option><option value="full">Full resolution (native)</option></select></div>
       <div class="row"><label>Defenders</label><select id="sDef"><option value="1">Ballistae fire back</option><option value="0">Peaceful sightseeing</option></select></div>
       <div class="row"><label>Volume</label><input type="range" id="sVol" min="0" max="1" step=".05" value=".8"></div>
       <div class="row"><label>Mouse sensitivity</label><input type="range" id="sSens" min=".4" max="2.5" step=".1" value="1"></div>
@@ -980,7 +980,7 @@ class World {
     this.terrainMesh = e.mesh({ pos: P, nrm: Nn, uv: U, idx });
     const Q = this.feat.vol; this.terrainMat = e.material('terrain', { tex: { A: this.splatTex, B: this.detailTex }, uni: { uVol: [Q.x, Q.z, Q.R, Q.d0 * Q.R] }, fdecl: BUMP_GLSL + 'uniform vec4 uVol;\n', surf: `
       vec3 base=texture(uTexA,vUV).rgb; float d1=texture(uTexB,vW.xz*.045).r, d2=texture(uTexB,vW.xz*.31).r, d3=texture(uTexB,vW.xz*1.7).r;
-      float det=d1*.5+d2*.3+d3*.2; alb=base*(.62+.8*det); N=bumpN(N,vW,d2*.6+d3*.4,.55); rough=.95; spec=.04; ao=1.;
+      float det=mix(.5,d1*.75+d2*.25,.85); alb=base*(.92+.16*det); N=bumpN(N,vW,d1*.7+d2*.3,.16); rough=.95; spec=.04; ao=1.;
       { vec3 Ng=normalize(vN); float cliff=smoothstep(.2,.5,1.-Ng.y), nearF=1.-smoothstep(80.,420.,length(vW-uCam)); float mac=fbm(vW.xz*.0023+3.);
         float strata=.5+.5*sin(vW.y*1.15+fbm(vW.xz*.021)*9.)+.35*sin(vW.y*.41+vW.x*.012); alb*=.86+.3*mac;
         float nf2=1.-smoothstep(50.,230.,length(vW-uCam)); alb*=mix(1.,.7+.4*clamp(strata,0.,1.5),cliff*.8*nf2); N=bumpN(N,vW,strata*.5*cliff*nf2,.7);
@@ -989,9 +989,14 @@ class World {
         { float drift=fbm(vec2(dot(vW.xz,vec2(.82,.57))*.16,dot(vW.xz,vec2(-.57,.82))*.9)), rip=fbm(vW.xz*.55+drift*4.); N=bumpN(N,vW,(rip*.45+drift*.9)*snowy,.3*nearF+.08);
           alb=mix(alb,alb*vec3(.9,.95,1.06),snowy*.55); emis+=alb*uSkyAmb*snowy*(.75+.35*(1.-clamp(dot(N,uSunDir),0.,1.)))*vec3(.92,.98,1.1);
           float sp2=pow(hash12(floor(vW.xz*60.)+floor(uTime*1.3+hash12(floor(vW.xz*60.))*7.)),90.); emis+=uSunCol*sp2*snowy*nearF*3.; }
-        float grass=smoothstep(.02,.1,base.g-max(base.r,base.b)); alb*=1.+grass*nearF*(.28*(hash12(floor(vW.xz*3.2))-.5)+.2*(vnoise(vW.xz*.9)-.5));
+        float grass=smoothstep(.02,.1,base.g-max(base.r,base.b)); alb*=1.+grass*nearF*(.05*(vnoise(vW.xz*.9)-.5));
         float blade=vnoise(vec2(vW.x*7.+vW.z*2.,vW.z*34.)), wind=sin(vW.x*.06+vW.z*.035+uTime*.9+vnoise(vW.xz*.05)*3.)*.5+.5; float gpat=fbm(vW.xz*.035+4.); { float cv=uSnowCov*smoothstep(.4,.8,Ng.y+.15*(vnoise(vW.xz*.8)-.5))*(1.-smoothstep(.1,.5,grass)*.0); alb=mix(alb,vec3(.88,.92,.98)*(.94+.1*vnoise(vW.xz*2.)),cv*.93); rough=mix(rough,.55,cv); N=bumpN(N,vW,cv*(vnoise(vW.xz*.7)*.5),.25*nearF); alb*=1.-.3*uWet*(1.-cv); rough=mix(rough,.28,uWet*(1.-cv)*.8); spec=mix(spec,.32,uWet*(1.-cv)); }
-        alb*=1.+grass*nearF*(.3*(blade-.5)+.06*wind); alb=mix(alb,alb*vec3(1.22,1.1,.7)+.012,grass*smoothstep(.55,.8,gpat)*.5); alb*=1.+grass*.12*(gpat-.5); }
+        alb*=1.+grass*nearF*.04*wind; alb=mix(alb,alb*vec3(1.22,1.1,.7)+.012,grass*smoothstep(.55,.8,gpat)*.5); alb*=1.+grass*.12*(gpat-.5);
+        { // patchwork fields: meadows, golden wheat, olive pasture, hedgerow borders and plough/crop rows
+          vec2 fp=vec2(dot(vW.xz,vec2(.82,.57)),dot(vW.xz,vec2(-.57,.82))); vec2 fs=vec2(110.,80.)*(.8+.4*hash12(floor(fp/400.))); vec2 fq=fp/fs; vec2 fc=floor(fq), ff=fract(fq); float fh=hash12(fc+3.7), fh2=hash12(fc*1.7+9.1);
+          vec3 tn=fh<.2?vec3(1.12,1.24,.55):fh<.4?vec3(.66,1.08,.68):fh<.58?vec3(1.55,1.22,.48):fh<.74?vec3(.9,1.08,.55):fh<.88?vec3(1.3,.92,.62):vec3(.6,.98,.82);
+          float fe=min(min(ff.x,1.-ff.x)*fs.x,min(ff.y,1.-ff.y)*fs.y); float hedge=smoothstep(.6,2.2,fe); float rowsF=.5+.5*sin(fp.y*(1.7+1.2*fh2)+fh*20.); float lowland=smoothstep(.86,.97,Ng.y)*(1.-smoothstep(120.,220.,vW.y));
+          float fm=grass*lowland*(.55+.45*smoothstep(.2,.8,fh2)); alb=mix(alb,alb*tn*(1.+.1*(gpat-.5)),fm*.9); alb*=1.-fm*.3*(1.-hedge); alb*=1.+fm*nearF*(rowsF-.5)*(.04+.04*step(.5,fh2)); } }
       { vec2 q=vW.xz-uVol.xy; float r=length(q); float ang=atan(q.y,q.x); float fo=smoothstep(uVol.w*.9,uVol.w*1.1,r)*(1.-smoothstep(uVol.z*.3,uVol.z*.66,r));
         float st=pow(.5+.5*cos(ang*5.+fbm(q*.011)*7.),7.); float lv=fo*st*smoothstep(.38,.66,fbm(q*.018+7.)); float cr=fbm(q*.09+uTime*.015);
         alb=mix(alb,vec3(.025,.02,.02),clamp(lv*1.6,0.,1.)); emis+=vec3(2.6,.7,.1)*lv*(.3+.9*smoothstep(.35,.8,cr))*(.8+.3*sin(uTime*1.7+r*.05)); }` });
@@ -1011,11 +1016,22 @@ class World {
     const B = this.B, w0 = lin(B.water[0]), w1 = lin(B.water[1]);
     this.waterMat = e.material('water', { blend: true, noShadow: true, fdecl: BUMP_GLSL + 'uniform vec3 uWD; uniform vec3 uWS;\n', uni: { uWD: w0, uWS: w1 }, surf: `
       ` + `
-      float dpt=clamp(vUV.x,0.,14.); vec2 p=vW.xz; float t=uTime;
-      float h1=fbm(p*.05+vec2(t*.04,t*.03))*3.+fbm(p*.22-vec2(t*.2,-t*.15))*1.2+vnoise(p*.9+vec2(t*.5,t*.3))*.35; N=bumpN(N,vW,h1,.9);
-      alb=mix(uWS,uWD,smoothstep(0.,7.,dpt)); rough=.05; spec=3.; vec3 V=normalize(uCam-vW); float fr=pow(1.-max(dot(N,V),0.),3.);
-      float edge=1.-smoothstep(0.,1.6,dpt); float foam=edge*(.35+.65*vnoise(p*1.3+t*.7))*step(.35,vnoise(p*.6-t*.2)+edge*.4); alb=mix(alb,vec3(.8),foam);
-      alpha=clamp(smoothstep(-.2,1.8,vUV.x)*(.72+.2*smoothstep(0.,8.,dpt)),0.,1.); alpha=mix(alpha,1.,fr*.65); alpha=max(alpha,foam*.8);` });
+      float dpt=clamp(vUV.x,0.,14.); vec2 p=vW.xz; float t=uTime; vec3 V=normalize(uCam-vW); float dist=length(uCam-vW); float nf=1.-smoothstep(120.,900.,dist), mf=1.-smoothstep(500.,3000.,dist);
+      vec2 d1=vec2(.8,.6), d2=vec2(-.6,.8), d3=vec2(.3,-.95);
+      float h1=sin(dot(p,d1)*.045+t*.7)*1.6+sin(dot(p,d2)*.09+t*1.1)*.8+fbm(p*.03+vec2(t*.03,t*.02))*3.;
+      vec2 wp=p+vec2(fbm(p*.06+t*.05),fbm(p*.06-t*.04+9.))*14.; float rg1=1.-abs(sin(dot(wp,d1)*.42+t*1.5)), rg2=1.-abs(sin(dot(wp,d3)*.63-t*1.9)), rg3=1.-abs(sin(dot(wp,d2)*1.1+t*2.4)); float h2=(rg1*rg1*.22+rg2*rg2*.14+fbm(p*.3-vec2(t*.2,-t*.15))*.25)*mf+rg3*rg3*.07*nf;
+      float h3=(vnoise(p*1.7+vec2(t*.55,t*.35))*.1+vnoise(p*3.4-vec2(t*.7,t*.2))*.05)*nf;
+      N=bumpN(N,vW,h1*.6+h2*2.2+h3,(.5+.35*mf)*.1);
+      float dd=smoothstep(0.,9.,dpt); vec3 deep=uWD*(.4+.3*fbm(p*.01+t*.01)); vec3 shal=mix(uWS*1.15,uWS*vec3(.8,1.05,.95),smoothstep(0.,2.,dpt));
+      alb=mix(shal,deep,dd); rough=.04; spec=3.;
+      float nv=max(dot(N,V),0.); float fr=pow(1.-nv,4.); fr=mix(.03,1.,fr);
+      vec3 R=reflect(-V,N); vec3 skyR=mix(uFogCol,uSkyAmb*1.6,smoothstep(0.,.5,R.y)); emis+=skyR*fr*.6;
+      emis+=alb*uSkyAmb*.25*(1.-fr)+uWD*uSunCol*.04*pow(max(dot(N,-uSunDir)*.5+.5,0.),3.)*(1.-dd);
+      float gl=pow(max(dot(R,uSunDir),0.),mix(120.,900.,nf)); emis+=uSunCol*gl*(.8+3.*nf)*step(0.,uSunDir.y);
+      float gl2=pow(max(dot(R,uSunDir),0.),24.); emis+=uSunCol*gl2*.07; float cau=smoothstep(.55,.95,rg1*rg2)*(1.-dd)*nf; emis+=alb*uSunCol*cau*.35;
+      float edge=1.-smoothstep(0.,1.8,dpt); float wv=sin(dpt*5.-t*1.6+fbm(p*.4)*4.)*.5+.5; float foam=edge*(.3+.7*vnoise(p*1.6+t*.6))*step(.32,vnoise(p*.7-t*.2)+edge*.4+.15*wv); foam=max(foam,smoothstep(.72,.9,h2*.9+h3*1.5+.45)*.035*nf);
+      alb=mix(alb,vec3(.85,.88,.9),foam); rough=mix(rough,.7,foam);
+      alpha=clamp(smoothstep(-.2,1.8,vUV.x)*(.74+.2*dd),0.,1.); alpha=mix(alpha,1.,fr*.7); alpha=max(alpha,foam*.85);` });
     this.waterMat.fdeclUni = true;
   }
   buildSkyAndLight() {
@@ -1106,14 +1122,14 @@ float gheight(vec2 p){ float fx=clamp((p.x+${WS / 2}.)/uGH.z,0.,uGH.w-.001), fz=
   float a=gdec(c), b=gdec(c+ivec2(1,0)), cc=gdec(c+ivec2(0,1)), d=gdec(c+ivec2(1,1)); return (u+v<1.)? a+(b-a)*u+(cc-a)*v : d+(b-d)*(1.-v)+(cc-d)*(1.-u); }`,
         hook: `{ float R=uGP.y; vec2 gb=aModel[3].xz; vec2 q=gb-floor((gb-uCam.xz)/(2.*R)+.5)*(2.*R); float dist=length(q-uCam.xz);
   float gy=gheight(q); vec3 gcol=textureLod(uTexB,q/${WS}.+.5,2.).rgb; float gm=smoothstep(.015,.075,gcol.g-max(gcol.r,gcol.b));
-  float fade=1.-smoothstep(.5*R,.97*R,dist); float keep=clamp((gm-.12)*3.-aInst.w*.55,0.,1.)*step(uGP.x+.9,gy);
+  float fade=1.-smoothstep(.3*R,.9*R,dist); float keep=clamp((gm-.12)*3.-aInst.w*.55,0.,1.)*step(uGP.x+.9,gy);
   float sc=fade*keep*(.65+.75*aInst.z); float yw=aInst.x*6.2831, cy=cos(yw), sy=sin(yw);
   vec2 wv=vec2(sin(uTime*1.3+q.x*.18+q.y*.11)*.5+.5+.35*sin(uTime*2.7+q.x*.9+q.y*.4), cos(uTime*1.1+q.y*.15)*.3+.15)*.55; float hh2=lp.y*lp.y;
   lp.x+=(cy*wv.x-sy*wv.y)*hh2/max(sc,.05)*.8; lp.z+=(sy*wv.x+cy*wv.y)*hh2/max(sc,.05)*.8;
   M=mat4(cy*sc,0.,-sy*sc,0., 0.,sc*(.85+.3*aInst.y),0.,0., sy*sc,0.,cy*sc,0., q.x,gy-.06,q.y,1.); vInst=vec4(gcol,aInst.y); ln=vec3(0.,1.,0.); }`,
         surf: `float hh=clamp(vL.y/.85,0.,1.); vec3 g=vInst.rgb; float gl0=dot(g,vec3(.33)); g=mix(vec3(gl0),g,1.25);
-  alb=g*mix(vec3(.28,.4,.16),vec3(1.5,1.55,.8),pow(hh,1.4))*(.7+.6*vInst.w)*1.3; alb*=1.-.35*smoothstep(.3,.0,hh)*step(.5,fract(vL.x*37.+vL.z*23.)); alb=mix(alb,alb*vec3(1.25,1.1,.6),smoothstep(.55,1.,vInst.w)*hh*.6); alb=mix(alb,vec3(.9,.94,1.),uSnowCov*(.35+.6*hh)); alb*=1.-.25*uWet;
-  N=normalize(mix(normalize(vN),vec3(0.,1.,0.),.8)); ao=.3+.7*hh; rough=.7; spec=.2;
+  alb=g*mix(vec3(.78,.92,.42),vec3(1.4,1.45,.8),pow(hh,1.1))*(.88+.24*vInst.w)*1.25; alb*=1.-.04*smoothstep(.3,.0,hh); alb=mix(alb,alb*vec3(1.25,1.1,.6),smoothstep(.55,1.,vInst.w)*hh*.6); alb=mix(alb,vec3(.9,.94,1.),uSnowCov*(.35+.6*hh)); alb*=1.-.25*uWet;
+  N=normalize(mix(normalize(vN),vec3(0.,1.,0.),.8)); ao=.82+.18*hh; rough=.7; spec=.2; emis+=alb*uSkyAmb*.35;
   { vec3 Vv=normalize(uCam-vW); float tr=pow(max(dot(-Vv,uSunDir),0.),1.8)*(.25+.75*hh); emis+=alb*uSunCol*tr*.7; float fr=pow(1.-abs(dot(N,Vv)),3.); emis+=uSkyAmb*fr*.12*alb; }` }); }
     // rocks
     const rr = mulberry32(99), nR = Math.floor(this.q.trees * .24), RM = new Float32Array(nR * 16), RI = new Float32Array(nR * 4); let rn = 0;
@@ -1180,15 +1196,15 @@ World.prototype.buildBuildings = function () {
   const e = this.eng; palette(this.B); this.arch = {}; const r = mulberry32(31);
   this.bmat = e.material('bld', { defs: ['INST'], fdecl: BUMP_GLSL, surf: `
     int m=int(vExt.x+.5); vec3 lp=vL; vec3 an=abs(vLN); vec2 uv=an.x>an.z? lp.zy : lp.xy; if(an.y>max(an.x,an.z)) uv=lp.xz;
-    alb=vCol.rgb*(.88+.24*hash12(vec2(vInst.z*37.,3.))); rough=.85; spec=.07; float hgt=smoothstep(0.,2.6,lp.y); ao=.6+.4*hgt; float n=fbm(uv*3.5+vInst.z*10.);
+    alb=vCol.rgb*(.88+.24*hash12(vec2(vInst.z*37.,3.))); rough=.85; spec=.07; float hgt=smoothstep(0.,2.6,lp.y); ao=.6+.4*hgt; float n=fbm(uv*3.5+vInst.z*10.); float fwUV=fwidth(uv.x)+fwidth(uv.y), aaT=1.-smoothstep(.05,.2,fwUV); n=mix(.5,n,1.-smoothstep(.004,.03,fwUV));
     if(m==0){ alb*=.82+.36*n; N=bumpN(N,vW,n*.5,.35); }
-    else if(m==1){ float rw=lp.z*2.3+lp.y*1.1; float row=floor(rw); float cx=fract(lp.x*2.1+mod(row,2.)*.5); float ry=fract(rw); float ed=smoothstep(0.,.14,cx)*smoothstep(1.,.86,cx)*smoothstep(0.,.25,ry); alb*=(.5+.5*ed)*(.8+.4*n); N=bumpN(N,vW,ed*.7,.5); spec=.18; rough=.65; }
-    else if(m==2){ float p=fract(uv.x*2.6); float gp=smoothstep(0.,.06,p)*smoothstep(1.,.94,p); alb*=(.45+.55*gp)*(.7+.6*vnoise(vec2(uv.x*2.6,uv.y*.8))); N=bumpN(N,vW,gp*.4,.3); }
-    else if(m==3){ float row=floor(uv.y*2.5); float bx=fract(uv.x*1.6+mod(row,2.)*.5); float by=fract(uv.y*2.5); float mo=smoothstep(0.,.07,bx)*smoothstep(1.,.93,bx)*smoothstep(0.,.1,by)*smoothstep(1.,.9,by); alb*=(.5+.5*mo)*(.72+.55*n); N=bumpN(N,vW,mo*.6+n*.35,.6); }
+    else if(m==1){ float rw=lp.z*2.3+lp.y*1.1; float row=floor(rw); float cx=fract(lp.x*2.1+mod(row,2.)*.5); float ry=fract(rw); float ed=smoothstep(0.,.14,cx)*smoothstep(1.,.86,cx)*smoothstep(0.,.25,ry); ed=mix(.72,ed,aaT); alb*=(.5+.5*ed)*(.8+.4*n); N=bumpN(N,vW,ed*.7,.5*aaT); spec=.18; rough=.65; }
+    else if(m==2){ float p=fract(uv.x*2.6); float gp=smoothstep(0.,.06,p)*smoothstep(1.,.94,p); gp=mix(.8,gp,aaT); alb*=(.45+.55*gp)*(.7+.6*mix(.5,vnoise(vec2(uv.x*2.6,uv.y*.8)),aaT)); N=bumpN(N,vW,gp*.4,.3*aaT); }
+    else if(m==3){ float row=floor(uv.y*2.5); float bx=fract(uv.x*1.6+mod(row,2.)*.5); float by=fract(uv.y*2.5); float mo=smoothstep(0.,.07,bx)*smoothstep(1.,.93,bx)*smoothstep(0.,.1,by)*smoothstep(1.,.9,by); mo=mix(.75,mo,aaT); alb*=(.5+.5*mo)*(.72+.55*n); N=bumpN(N,vW,mo*.6+n*.35,.6*aaT); }
     else if(m==4){ float fl=1.+.25*sin(uTime*7.+vInst.z*40.); emis=vec3(1.,.55,.2)*vExt.y*fl*(1.-vInst.x)*2.2*(1.-smoothstep(.4,1.,vInst.y)); alb=vec3(.03,.025,.02); spec=.5; rough=.2; }
-    else if(m==5){ float s=vnoise(vec2(lp.x*7.,lp.z*1.3+lp.y*.8)); alb*=.65+.6*s; N=bumpN(N,vW,s,.5); rough=.95; }
-    { float cvb=uSnowCov*smoothstep(.4,.78,N.y+.18*(n-.5))*(1.-vInst.x); alb=mix(alb,vec3(.86,.9,.97)*(.92+.12*n),cvb*.92); rough=mix(rough,.6,cvb); alb*=1.-.2*uWet; }
-    ${this.B.snow ? `{ float sc=smoothstep(.42,.78,N.y+.18*(n-.5))*(1.-vInst.x); alb=mix(alb,vec3(.86,.9,.97)*(.92+.12*n),sc*.92); rough=mix(rough,.6,sc); N=normalize(mix(N,vec3(0.,1.,0.),sc*.5)); }` : ''}
+    else if(m==5){ float s=mix(.5,vnoise(vec2(lp.x*7.,lp.z*1.3+lp.y*.8)),aaT); alb*=.65+.6*s; N=bumpN(N,vW,s,.5*aaT); rough=.95; }
+    { float cvb=uSnowCov*smoothstep(.45,.7,normalize(vN).y)*(1.-vInst.x); alb=mix(alb,vec3(.86,.9,.97)*(.95+.05*n),cvb*.92); rough=mix(rough,.6,cvb); alb*=1.-.2*uWet; }
+    ${this.B.snow ? `{ float sc=smoothstep(.5,.72,normalize(vN).y)*(1.-vInst.x); alb=mix(alb,vec3(.86,.9,.97)*(.95+.05*n),sc*.92); rough=mix(rough,.6,sc); N=normalize(mix(N,vec3(0.,1.,0.),sc*.5)); }` : ''}
     alb=mix(alb,vec3(.02,.016,.013)*(.6+.9*n),vInst.x);
     float fi=vInst.y; emis+=vec3(2.7,.8,.12)*fi*(.2+1.2*fbm(vL.xz*2.2+uTime*2.4+vL.y*.5))*(.35+.65*hgt)*(1.-vInst.x*.75);` });
   const names = Object.keys(BTYPES);
@@ -1267,17 +1283,17 @@ const SKIN_SURF = `
   float stripe=.5+.5*sin(arc*1.5+around*6.2831*2.+n2*5.); float pn=mix(n2,stripe,.45); float pw=smoothstep((1.-tm)-.06,(1.-tm)+.06,pn)*to; col=mix(col,uPat,pw*.9);
   col=mix(col,uComp*1.15+.08,bp*.85); col*=mix(1.,.72,dw*.6);
   { float dors=1.-smoothstep(0.,.32,abs(around-.25)); col*=1.-.3*dors*(1.-hw)*(1.-bp); float lum=dot(col,vec3(.3,.59,.11)); col=mix(vec3(lum),col,1.4); col*=.9+.35*smoothstep(.45,.75,n2)*(1.-bp); }
-  vec3 sc=col*mix(.95,.88+.24*S.w,dt)*(.68+.4*smoothstep(0.,.7,S.x)); sc=mix(sc,sc*vec3(1.1,.95,.8)+uComp*.04,smoothstep(.55,1.,S.w)*.5*dt);
+  vec3 sc=col*mix(.95,.88+.24*S.w,dt)*(.84+.3*smoothstep(0.,.7,S.x)); sc=mix(sc,sc*vec3(1.1,.95,.8)+uComp*.04,smoothstep(.55,1.,S.w)*.5*dt);
   sc*=.82+.3*grime; float scar=smoothstep(.62,.7,fbm(vec2(arc*2.3,around*11.))); sc=mix(sc,sc*1.5+.03,scar*.35*dt);
   sc=mix(sc,sc*vec3(1.25,1.2,.85)+.015,S.y*.3*dt);
-  vec3 skinC=uPrimal*(.62+.3*n3)*vec3(1.,.97,.95)+col*.12; float cover=mix(.85,smoothstep(.03,.4,S.x),dt); col=mix(skinC,sc,cover);
+  vec3 skinC=uPrimal*(.95+.3*n3)*vec3(1.,.98,.96)+col*.2; float cover=mix(.9,smoothstep(.0,.22,S.x),dt); col=mix(skinC,sc,cover);
   float wr=smoothstep(.55,.95,abs(sin(arc*9.+n1*4.)))*smoothstep(.2,.7,belly); col*=1.-.22*wr;
   vec3 Vv=normalize(uCam-vW); float nv0=clamp(dot(N,Vv),0.,1.); float fr0=pow(1.-nv0,3.);
-  alb=col; N=bumpN(N,vW,H,.8+.5*uRuf); rough=clamp(.5-.28*S.y*dt+.14*(n3-.5),.15,.9); spec=.55+.6*S.y*dt; ao=mix(.85,.66+.34*smoothstep(0.,.55,S.x),dt);
+  alb=col; N=bumpN(N,vW,H,(.8+.5*uRuf)*(.3+.7*dt)); rough=clamp(.5-.28*S.y*dt+.14*(n3-.5),.15,.9); spec=.55+.6*S.y*dt; ao=mix(.92,.86+.14*smoothstep(0.,.55,S.x),dt);
   alb=mix(alb,vec3(.9,.05,.02),uHurt*.5);
   float nl=dot(N,uSunDir); float wrap=clamp((nl+.4)/1.4,0.,1.)-max(nl,0.);
   float gap=1.-smoothstep(0.,.6,S.x); float neckW=smoothstep(2.2,1.,z); float zone=max(bp,neckW*.85);
-  emis=alb*uSunCol*wrap*.2*(uComp*.6+.4)+uFl*uHeat*(.2+.8*gap)*(.08+.92*zone)*.34*(.75+.25*sin(uTime*17.+arc*4.));
+  emis=skinC*(uSkyAmb+.05)*.35*gap+alb*uSunCol*wrap*.2*(uComp*.6+.4)+uFl*uHeat*(.2+.8*gap)*(.08+.92*zone)*.34*(.75+.25*sin(uTime*17.+arc*4.));
   float band=smoothstep(.88,1.,sin(arc*.5-uTime*1.2+around*2.5)); emis+=col*band*S.y*dt*.4;
   float nv=clamp(dot(N,Vv),0.,1.); float fr=pow(1.-nv,3.); emis+=uSkyAmb*fr*.26*(.3+S.y*dt)+uSunCol*pow(1.-nv,4.)*max(dot(N,-uSunDir)+.2,0.)*.12*col;
   float gl=pow(max(dot(N,normalize(uSunDir+Vv)),0.),mix(40.,160.,fract(S.w*13.7)))*step(.5,S.w)*(.35+S.y)*dt*step(.0,nl); emis+=uSunCol*gl*(uComp*.5+.5)*.45;
@@ -1692,8 +1708,9 @@ class Sfx {
 // ===== Game =====
 const $ = (id) => document.getElementById(id);
 const QUALITY = {
-  low: { terrainN: 288, splat: 896, trees: 1500, people: .5, particles: 3200, shadow: 1024, msaa: 0, bloom: false, scale: .7, shadows: true },
+  low: { terrainN: 288, splat: 896, trees: 1500, people: .5, particles: 3200, shadow: 1024, msaa: 0, bloom: false, scale: .85, shadows: true },
   med: { terrainN: 416, splat: 1280, trees: 3400, people: .8, particles: 6000, shadow: 2048, msaa: 2, bloom: true, scale: 1, shadows: true },
+  full: { terrainN: 576, splat: 1536, trees: 6000, people: 1, particles: 9000, shadow: 4096, msaa: 4, bloom: true, scale: 1, shadows: true, full: true },
   high: { terrainN: 576, splat: 1536, trees: 6000, people: 1, particles: 9000, shadow: 2048, msaa: 4, bloom: true, scale: 1, shadows: true },
 };
 const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -1715,9 +1732,9 @@ class Game {
     this.D = null; this.bolts = []; this.patches = []; this.shake = 0; this.hurtT = 0; this.alertOn = false; this.menuAng = .6; this.hudT = 0; this.fpsAvg = 60; this.lowFrames = 0;
     this.bindUI(); window.addEventListener('resize', () => this.resize()); this.resize();
   }
-  autoQ() { const m = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent); return m ? 'low' : (navigator.hardwareConcurrency || 4) >= 8 ? 'high' : 'med'; }
+  autoQ() { const ios = /iPhone|iPad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1), m = /Android|Mobile/i.test(navigator.userAgent); return ios ? 'med' : m ? 'low' : (navigator.hardwareConcurrency || 4) >= 8 ? 'high' : 'med'; }
   applyQuality() { const e = this.eng, q = this.q; e.q.shadow = q.shadow; e.q.msaa = q.msaa; e.q.bloom = q.bloom; e.initShadow(); e.resize(e.W, e.H, true); this.resize(true); }
-  resize() { const dpr = Math.min(window.devicePixelRatio || 1, 2) * this.q.scale * (this.dynScale || 1), w = Math.max(2, Math.floor(innerWidth * dpr)), h = Math.max(2, Math.floor(innerHeight * dpr)); if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; } this.eng.resize(w, h); }
+  resize() { const dpr = this.q.full ? Math.min(window.devicePixelRatio || 1, 3) : Math.min(window.devicePixelRatio || 1, 2) * this.q.scale * (this.dynScale || 1), w = Math.max(2, Math.floor(innerWidth * dpr)), h = Math.max(2, Math.floor(innerHeight * dpr)); if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; } this.eng.resize(w, h); }
   setLoad(p, t) { $('lbar').style.width = (p * 100) + '%'; if (t) $('ltxt').textContent = t; return new Promise(r => setTimeout(r, 16)); }
   async boot() {
     await this.setLoad(.1, 'Reading the genome…'); const t = /[?&]dragon=(\d)/.exec(location.search); this.presets = PRESET_SPECS.map((_, i) => makePreset(i)); await this.setDragon(this.presets[t ? +t[1] : 0], true);
