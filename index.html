@@ -770,7 +770,7 @@ class World {
     const r = this.rnd; this.rv = { a: 240 + r() * 80, b: 70 + r() * 50, p: r() * 6, q: r() * 6, c: (r() - .5) * 300 };
     this.lake = { x: (r() < .5 ? -1 : 1) * (500 + r() * 200) * 1.6, z: (r() - .5) * 900 * 1.6 };
     this.layoutVillages(); this.buildHeights(); this.finishVillages(); this.buildSlopeGrid(); this.paintSplat(); this.buildTerrain(); this.buildWater(); this.buildSkyAndLight();
-    this.buildLava(); this.buildVeg(); this.buildBuildings(); this.buildPeople();
+    this.buildLava(); this.buildVeg(); this.buildBuildings(); this.buildPeople(); this.buildMages();
   }
   riverX(z) { const v = this.rv; return v.a * Math.sin(z * .0032 + v.p) + v.b * Math.sin(z * .0091 + v.q) + v.c; }
   baseH(x, z) {
@@ -1231,6 +1231,16 @@ World.prototype.buildPeople = function () {
   const n = this.people.length; this.pM = new Float32Array(n * 16); this.pI = new Float32Array(n * 4); this.people.forEach((p, i) => { this.pI[i * 4] = p.tint[0]; this.pI[i * 4 + 1] = p.tint[1]; this.pI[i * 4 + 2] = p.tint[2]; }); e.instances(this.peopleMesh, this.pM, this.pI, n);
   this.peopleMat = e.material('people', { defs: ['INST'], surf: `alb=vCol.rgb*mix(vec3(1.),vInst.rgb,vExt.x); spec=.05;` });
 };
+World.prototype.buildMages = function () {
+  const e = this.eng, g = new GB(), skin = lin('#d2a77c'), W = [1, 1, 1];
+  g.cyl(0, 0, 0, .58, .26, 1.6, 8, W, [1, 0], true); g.cyl(0, 1.5, 0, .27, .3, .12, 8, [.2, .15, .1], [0, 0], true);
+  g.blob(0, 1.78, 0, .2, .22, .2, skin, [0, 0], mulberry32(3), 6, 3, 0); g.cyl(0, 1.9, 0, .38, .02, .95, 8, W, [1, 0], true);
+  g.cyl(.62, 0, 0, .05, .05, 2.2, 5, [.35, .22, .1], [0, 0], true); g.blob(.62, 2.38, 0, .22, .22, .22, W, [0, 1], mulberry32(4), 6, 3, 0);
+  this.mageMesh = g.build(e); const r = mulberry32(991); this.mages = []; const els = ['FIRE', 'EARTH', 'WATER', 'AIR'];
+  for (const v of this.villages) { const n = v.kind === 0 ? 4 : v.kind === 1 ? 9 : 7; for (let i = 0; i < n; i++) { const a = r() * TAU, d = 14 + r() * v.R * .72, x = v.cx + Math.cos(a) * d, z = v.cz + Math.sin(a) * d; this.mages.push({ x, z, y: this.heightAt(x, z), v, el: els[(i + v.idx) % 4], alive: true, hp: 1, rise: 0, cd: 1.5 + r() * 3, ph: r() * 6, yaw: 0, cast: 0 }); } }
+  const n = this.mages.length; this.mM = new Float32Array(n * 16); this.mI = new Float32Array(n * 4); this.mageTint = { FIRE: lin('#b8321a'), EARTH: lin('#3c7a2a'), WATER: lin('#2a62b4'), AIR: lin('#7a58b8') };
+  e.instances(this.mageMesh, this.mM, this.mI, n); this.mageMat = e.material('mages', { defs: ['INST'], surf: `alb=vCol.rgb*mix(vec3(1.),vInst.rgb,vExt.x); spec=.1; emis=vInst.rgb*vExt.y*2.4;` });
+};
 World.prototype.updatePeople = function (dt, dragonPos, alarm) {
   const P = this.people, r = Math.random; let k = 0;
   for (let i = 0; i < P.length; i++) {
@@ -1249,7 +1259,7 @@ World.prototype.drawList = function (cam, time) {
   for (const m of this.treeMeshes) L.push({ mesh: m.mesh, mat: this.treeMat }); L.push({ mesh: this.rockMesh, mat: this.rockMat }); if (this.grassMesh) L.push({ mesh: this.grassMesh, mat: this.grassMat });
   for (const t in this.arch) L.push({ mesh: this.arch[t].mesh, mat: this.bmat });
   L.push({ mesh: this.lavaMesh, mat: this.lavaMat, model: this.lavaM, noShadow: true });
-  L.push({ mesh: this.peopleMesh, mat: this.peopleMat, noShadow: true });
+  L.push({ mesh: this.peopleMesh, mat: this.peopleMat, noShadow: true }); if (this.mageMesh && this.mageOn) L.push({ mesh: this.mageMesh, mat: this.mageMat, noShadow: true });
   for (const bl of this.ballistae) { if (bl.b.dead || bl.b.collapse > .05) continue; L.push({ mesh: this.ballistaMesh, mat: this.millMat, model: bl.model }); }
   for (const m of this.mills) { if (m.b.collapse > .3) continue; const b = m.b, c = Math.cos(b.yaw), s = Math.sin(b.yaw), ca = Math.cos(m.ang), sa = Math.sin(m.ang); const r = [c, 0, -s], f = [s, 0, c], u = [0, 1, 0]; const r2 = [r[0] * ca + u[0] * sa, r[1] * ca + u[1] * sa, r[2] * ca + u[2] * sa], u2 = [-r[0] * sa + u[0] * ca, -r[1] * sa + u[1] * ca, -r[2] * sa + u[2] * ca]; M4.basis(m.model, r2, u2, f, [b.x + f[0] * 3.3 * b.s, b.y + 10.2 * b.s, b.z + f[2] * 3.3 * b.s], b.s, b.s, b.s); L.push({ mesh: this.millMesh, mat: this.millMat, model: m.model }); }
   if (this.waterMesh) L.water = { mesh: this.waterMesh, mat: this.waterMat };
@@ -1269,7 +1279,7 @@ float stilt(vec4 s, vec2 f){ return ((s.w-.5)*f.x+(fract(s.w*37.1)-.5)*f.y)*.55*
 const SKIN_SURF = `
   float z=vExt.x, belly=vExt.y, arc=vExt.z; float au=abs(fract(vUV.y+.25)-.5); float around=.25+au; /* mirrored about the dorsal & ventral midlines so left and right sides colour identically */ float circ=vExt.w>.01?vExt.w:1.6;
   float pm=zsel(uPM0,uPM1,z), cm=zsel(uCM0,uCM1,z), tm=zsel(uTM0,uTM1,z), to=zsel(uTO0,uTO1,z);
-  float bodyZ=1.-step(3.5,z); float hw=1.-step(.3,z); float cs=.23*mix(1.,mix(.62,1.,smoothstep(.8,2.2,z)),bodyZ)*(1.-.22*hw);
+  float bodyZ=1.-step(3.5,z); float hw=1.-step(.3,z); float cs=.23*clamp(16./uScaleN,.6,1.7)*mix(1.,mix(.62,1.,smoothstep(.8,2.2,z)),bodyZ)*(1.-.22*hw);
   float Nx=max(5.,floor(circ/cs+.5)); vec2 sp=vec2(around*Nx, arc/(cs*.78)); vec2 fA,fB,fD,fH,fM;
   float dt=1.-smoothstep(.12,.5,fwidth(sp.x)+fwidth(sp.y)); vec4 A=scl(sp,Nx,.25,fA);
   float bp=smoothstep(.4,.8,belly); float Nb=max(3.,floor(circ/(cs*3.4)+.5)); vec4 Bq=scl(vec2(around*Nb, arc/(cs*1.5)),Nb,0.,fB);
@@ -1282,8 +1292,8 @@ const SKIN_SURF = `
   float n1=fbm(vec2(arc*.16,around*1.3)), n2=fbm(vec2(arc*.09+7.,around*.9+3.)), n3=fbm(vec2(arc*1.1,around*7.)), grime=fbm(vec2(arc*.45+13.,around*3.5));
   vec3 col=uPrimal*(.55+.45*clamp(.35+pm*1.5,0.,1.));
   float cw=smoothstep((1.-cm)-.07,(1.-cm)+.07,n1*1.15); col=mix(col,uComp,cw*.92);
-  float stripe=.5+.5*sin(arc*1.5+around*6.2831*2.+n2*5.); float pn=mix(n2,stripe,.45); float pw=smoothstep((1.-tm)-.06,(1.-tm)+.06,pn)*to; col=mix(col,uPat,pw*.9);
-  col=mix(col,uComp*1.15+.08,bp*.85); col*=mix(1.,.72,dw*.6);
+  float stripe=.5+.5*sin(arc*1.5+around*6.2831*2.+n2*5.); float pn=mix(n2,stripe,.45); float pw=smoothstep((1.-tm)-.06,(1.-tm)+.06,pn)*to; col=mix(col,uPat,pw*.7);
+  col=mix(col,uComp*1.15+.08,bp*.85); col*=mix(1.,.72,dw*.6); col*=mix(.56,1.12,bp); col=mix(col,col*vec3(.9,.9,1.),.15*(1.-bp));
   { float dors=1.-smoothstep(0.,.32,abs(around-.25)); col*=1.-.3*dors*(1.-hw)*(1.-bp); float lum=dot(col,vec3(.3,.59,.11)); col=mix(vec3(lum),col,1.1); col*=.9+.35*smoothstep(.45,.75,n2)*(1.-bp); }
   vec3 sc=col*mix(.95,.88+.24*S.w,dt)*(.84+.3*smoothstep(0.,.7,S.x)); sc=mix(sc,sc*vec3(1.1,.95,.8)+uComp*.04,smoothstep(.55,1.,S.w)*.5*dt);
   sc*=.82+.3*grime; float scar=smoothstep(.62,.7,fbm(vec2(arc*2.3,around*11.))); sc=mix(sc,sc*1.5+.03,scar*.35*dt);
@@ -1306,7 +1316,7 @@ const MEM_SURF = `
   float cm=uCM1[1], pmv=uPM1[1], tm=uTM1[1];
   float band=smoothstep(.3,.08,edge); float vein=smoothstep(.045,.0,edge)+smoothstep(.02,.0,abs(t-.5))*.6*smoothstep(.2,.7,sd);
   float rag=fbm(vec2(t*14.+sec*5.,sd*6.)); if(sd>.9 && rag>.6+(1.-sd)*3.) discard;
-  float web=fbm(vec2(t*6.+sec*3.,sd*14.)); float cross=smoothstep(.05,.0,abs(fract(sd*7.+web*.7)-.5)-.45)*.0;
+  float web=fbm(vec2(t*6.+sec*3.,sd*14.)); 
   vec3 comp=mix(uPrimal*.55,uComp*.5,clamp(cm*2.3,0.,1.)); vec3 col=mix(comp,uPrimal,band*(.55+.45*clamp(.4+pmv,0.,1.)));
   col=mix(col,uPat,smoothstep(.55,.9,web)*tm*.55*uTO1[1]);
   float tip=smoothstep(.55,1.,sd); col=mix(col,col*1.1+uComp*.05,tip*(1.-band)*.7); col=mix(col*.55,col,smoothstep(0.,.3,sd+(vExt.w)));
@@ -1315,6 +1325,7 @@ const MEM_SURF = `
   float spots=smoothstep(.6,.72,fbm(vec2(t*8.+sec*5.,sd*8.+3.))); col=mix(col,col*.45+uPat*.15,spots*.45*(1.-band)); col=mix(col*.7,col*1.25,smoothstep(.1,.9,sd)*.6); col+=uComp*.06*smoothstep(.5,1.,sd);
   float lw=abs(fract(t*6.+.2*(web-.5))-.5); float fv=smoothstep(.45,.495,lw)*smoothstep(.0,.2,sd)*(1.-.5*sd); col*=1.-fv*.38; col=mix(col,col*vec3(1.15,.95,.9),smoothstep(.4,.0,lw-.1)*.12);
   col*=1.-vein*.6; col*=.82+.3*web;
+  { vec3 Nf=normalize(vN)*(gl_FrontFacing?1.:-1.); float topS=smoothstep(-.15,.35,Nf.y); float cl=dot(col,vec3(.3,.59,.11)); vec3 und=mix(col,vec3(cl)*vec3(1.35,1.02,.7),.45)*1.05+uComp*.06; col=mix(und,col*.42+uPrimal*.03,topS); }
   alb=col; N=bumpN(N,vW,web*.5+fv*.5+vein*.4+.35*(.5+.5*cos(t*6.2831))*smoothstep(.05,.5,sd)+.1*cap,.6); rough=.55; spec=.35; ao=.85;
   float bl=max(-dot(normalize(vN)*(gl_FrontFacing?1.:-1.),uSunDir),0.);
   emis=alb*uSunCol*bl*.85*(.5+.7*web)*(1.-.5*cap)*vec3(1.28,.86,.6)+uComp*bl*.2+alb*uComp*.03+alb*vec3(1.,.5,.2)*uHeat*.5;
@@ -1507,9 +1518,9 @@ class Dragon {
         const pts2 = [W]; let q = W; for (let j = 1; j <= 8; j++) { const f = j / 8, bend = drag * 1.2 * (1 + .12 * fi) * Math.pow(f, 1.5) + .1 * f * f - .05 + (.02 + .04 * (1 - amp)) * f * f * Math.sin(t * (8 + fi * 1.7) + wi * 2.1 + fi), dd = V3.norm(V3.add(dir0, V3.mul(n2, bend))); q = V3.add(q, V3.mul(dd, seg)); pts2.push(q); } fing.push(pts2); tips.push(q);
       }
       wpz.arm = arm; wpz.fing = fing; wpz.W = W; wpz.n2 = n2; wpz.sPos = sPos; wpz.d2 = d2;
-      const armR = [], armRY = []; for (let k = 0; k < 9; k++) { const f = k / 8, r = (.52 - .3 * f) * S; armR.push(r); armRY.push(r * .85); }
+      const armR = [], armRY = []; for (let k = 0; k < 9; k++) { const f = k / 8, r = (.62 - .36 * f) * S; armR.push(r); armRY.push(r * .85); }
       this.wingBones.set(arm, armR, armRY, [0, 1, 0], wi * 5);
-      for (let fi = 0; fi < 4; fi++) { const rr = [], c = fing[fi]; for (let k = 0; k < 9; k++) rr.push(Math.max(.012, (.22 * (1 - fi * .1) * Math.pow(1 - k / 8, 1.0) + .02)) * S); this.wingBones.set(c, rr, rr, [0, 1, 0], wi * 5 + 1 + fi); }
+      for (let fi = 0; fi < 4; fi++) { const rr = [], c = fing[fi]; for (let k = 0; k < 9; k++) rr.push(Math.max(.012, (.31 * (1 - fi * .1) * Math.pow(1 - k / 8, 1.0) + .025)) * S); this.wingBones.set(c, rr, rr, [0, 1, 0], wi * 5 + 1 + fi); }
       // membranes. Every edge is welded to a bone: arm polyline, finger polylines, body flank (shoulder->hip)
       const fp = (arrp, s2) => { const f = clamp(s2, 0, 1) * 8, i = Math.min(Math.floor(f), 7), u = f - i, a = arrp[i], b = arrp[i + 1]; return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u]; };
       const hip = [sx * hipA[0], hipA[1], hipA[2]], t3 = fp(fing[3], .88);
@@ -1517,7 +1528,7 @@ class Dragon {
         const g = wi * 4 + sec, base = g * per;
         for (let si = 0; si <= mS; si++) for (let ti = 0; ti <= mT; ti++) {
           const sN = si / mS, tN = ti / mT; let o;
-          if (sec < 3) { const sc = .22, dep = sc * Math.pow(Math.sin(tN * Math.PI), .7), s2 = .88 * sN * (1 - dep * smooth(.3, 1, sN)); const a = fp(fing[sec], s2), b = fp(fing[sec + 1], s2); o = V3.lerp(a, b, tN); o = V3.add(o, V3.mul(n2, drag * .55 * S * Math.sin(Math.PI * tN) * smooth(.1, 1, sN))); o = V3.add(o, V3.mul(n2, .04 * S * Math.sin(Math.PI * tN) * Math.sin(sN * 11 + sec * 1.7 + wi * 2) * (1 + .5 * Math.sin(t * 3 + sN * 5)) * smooth(.12, 1, sN))); }
+          if (sec < 3) { const sc = .31, dep = sc * Math.pow(Math.sin(tN * Math.PI), .7), s2 = .88 * sN * (1 - dep * smooth(.3, 1, sN)); const a = fp(fing[sec], s2), b = fp(fing[sec + 1], s2); o = V3.lerp(a, b, tN); o = V3.add(o, V3.mul(n2, drag * .55 * S * Math.sin(Math.PI * tN) * smooth(.1, 1, sN))); o = V3.add(o, V3.mul(n2, .04 * S * Math.sin(Math.PI * tN) * Math.sin(sN * 11 + sec * 1.7 + wi * 2) * (1 + .5 * Math.sin(t * 3 + sN * 5)) * smooth(.12, 1, sN))); }
           else { const u = sN, v = tN, ve = v * (1 - .13 * Math.sin(Math.PI * u) * smooth(.2, 1, v)); const ea = fp(arm, u), et = V3.lerp(hip, t3, u), base2 = V3.lerp(ea, et, ve), f3 = fp(fing[3], ve * .88), lin3 = V3.lerp(W, t3, ve); o = V3.add(base2, V3.mul(V3.sub(f3, lin3), u)); o = V3.add(o, V3.mul(n2, drag * .4 * S * Math.sin(Math.PI * u) * Math.sin(Math.PI * Math.min(ve, 1)))); o[1] -= Math.sin(Math.PI * u) * Math.sin(Math.PI * Math.min(ve, 1)) * .3 * S * (1 - .7 * Math.min(fold, 1)); }
           const k = (base + si * (mT + 1) + ti) * 3; P[k] = o[0]; P[k + 1] = o[1]; P[k + 2] = o[2];
         }
@@ -1528,16 +1539,16 @@ class Dragon {
     // ---- legs ----
     const lg = this.legs, sw = Math.sin(TAU * ph);
     const legPts = [[[.85, -.55, hips[2] / S + .2], [1.1, -1.05, hips[2] / S + .95], [.95, -1.0, hips[2] / S - .4], [.9, -1.3, hips[2] / S - 1.15]], [[.7, -.6, .85], [.65, -1.0, .45], [.55, -.8, 1.0], [.5, -.8, 1.5]]];
-    for (let li = 0; li < 4; li++) { const fore = li >= 2, sxl = li % 2 === 0 ? 1 : -1, cp = legPts[fore ? 1 : 0].map(q => [sxl * q[0] * S, q[1] * S, q[2] * S + (fore ? 0 : .12 * sw * S)]); const c = [], r = []; for (let k = 0; k < 9; k++) { c.push(crPoint(cp, k / 8)); const f = k / 8; r.push((fore ? .22 : .38) * S * (1 - f * .8) + .03 * S); } lg.set(c, r, r.map(v => v * .95), [0, 1, 0], li); this.legTips = this.legTips || []; this.legTips[li] = { p: c[8], d: V3.norm(V3.sub(c[8], c[7])) }; }
+    for (let li = 0; li < 4; li++) { const fore = li >= 2, sxl = li % 2 === 0 ? 1 : -1, cp = legPts[fore ? 1 : 0].map(q => [sxl * q[0] * S, q[1] * S, q[2] * S + (fore ? 0 : .12 * sw * S)]); const c = [], r = []; for (let k = 0; k < 9; k++) { c.push(crPoint(cp, k / 8)); const f = k / 8; r.push((fore ? .22 : .38) * S * (1 - f * .8) + .03 * S); } lg.set(c, r, r.map(v => v * .95), [0, 1, 0], li); this.legTips = this.legTips || []; this.legTips[li] = { p: c[8], d: V3.norm(V3.sub(c[8], c[7])) }; this.legC = this.legC || []; this.legC[li] = c; this.legSx = this.legSx || []; this.legSx[li] = sxl; }
     lg.upload();
     // ---- spikes (instanced, local->world each frame later) ----
     this.spikeList = []; const body = this.body, push = (p, d, len, w) => { if (this.spikeList.length < this.maxSpikes) this.spikeList.push([p, d, len, w]); };
-    const place = (idxs, h0, h1, lean) => { idxs.forEach((i, n) => { const f = n / Math.max(idxs.length - 1, 1), fi = i * 3, p = [body.fp[fi], body.fp[fi + 1], body.fp[fi + 2]], u = [body.fu[fi], body.fu[fi + 1], body.fu[fi + 2]], tn = V3.norm(V3.sub(C[Math.min(i + 1, R - 1)], C[Math.max(i - 1, 0)])); const ry2 = RY[i]; const d = V3.norm(V3.add(V3.mul(u, 1), V3.mul(tn, lean))); push(V3.add(p, V3.mul(u, ry2 * .9)), d, lerp(h0, h1, f) * S * 1.3, lerp(h0, h1, f) * S * .4 + .03 * S); }); };
+    const place = (idxs, h0, h1, lean) => { idxs.forEach((i, n) => { const f = n / Math.max(idxs.length - 1, 1), fi = i * 3, p = [body.fp[fi], body.fp[fi + 1], body.fp[fi + 2]], u = [body.fu[fi], body.fu[fi + 1], body.fu[fi + 2]], tn = V3.norm(V3.sub(C[Math.min(i + 1, R - 1)], C[Math.max(i - 1, 0)])); const ry2 = RY[i]; const d = V3.norm(V3.add(V3.mul(u, 1), V3.mul(tn, lean))); push(V3.add(p, V3.mul(u, ry2 * .9)), d, lerp(h0, h1, f) * S * 1.65, lerp(h0, h1, f) * S * .4 + .03 * S); }); };
     place(this.neckIdx, .12 + .09 * T.neckSpikes, .2 + .1 * T.neckSpikes, -.5); place(this.backIdx, .2 + .12 * T.backSpikes, .26 + .13 * T.backSpikes, .55); place(this.tailIdx, .2 + .1 * T.tailSpikes, .08 + .03 * T.tailSpikes, .5);
     // arm spikes + wing claws (curved multi-segment talons)
     const talon = (p, d, len, wd, curl) => { let pp = p, dd = d; for (let k = 0; k < 4; k++) { const sl = len * [.34, .3, .22, .14][k]; push(pp, dd, sl * 1.15, wd * (1 - k * .22)); pp = V3.add(pp, V3.mul(dd, sl * .85)); dd = V3.norm(V3.add(dd, V3.mul(curl, .45))); } };
     for (let wi = 0; wi < 2; wi++) { const w = this.wp[wi], n = 2 + T.armSpikes; for (let k = 0; k < n; k++) { const q = w.arm[Math.min(8, 2 + k + (k > 3 ? 1 : 0))]; push(V3.add(q, V3.mul(w.n2, .1 * S)), V3.norm(V3.add(w.n2, V3.mul(w.d2, .55))), (.12 + .09 * T.armSpikes) * S, (.06 + .02 * T.armSpikes) * S); } for (let c = 0; c < 1 + Math.ceil(T.wingClaws / 2); c++) push(w.W, V3.norm(V3.add(V3.mul(w.d2, .5), V3.add(V3.mul(w.n2, .35 - c * .25), [0, 0, 0.9 - c * .35]))), (.3 + .12 * T.wingClaws) * S, .11 * S); for (let fi = 0; fi < 4; fi++) { const c = w.fing[fi], a = c[8], b = c[7]; talon(a, V3.norm(V3.sub(a, b)), (1.25 - fi * .1) * S, .11 * S, w.n2); if (fi < 3) for (const j of [3, 6]) push(V3.add(c[j], V3.mul(w.n2, .04 * S)), V3.norm(V3.add(w.n2, V3.norm(V3.sub(c[j + 1], c[j])))), .24 * S, .05 * S); } talon(w.W, V3.norm(V3.add(V3.mul(w.d2, .45), V3.mul(w.n2, -.2))), (.7 + .15 * T.wingClaws) * S, .15 * S, w.n2); }
-    for (let li = 0; li < 4; li++) { const lt = this.legTips[li]; for (let c = -1; c <= 1; c++) push(lt.p, V3.norm(V3.add(lt.d, [c * .3, -.25, .0])), .26 * S, .06 * S); const T2 = T.legSpikes; for (let k = 0; k < T2; k++) { const f = (k + 1) / (T2 + 1); push(V3.lerp(this.pts && lt.p, lt.p, 1), [0, 1, 0], 0.001, 0.001); } }
+    for (let li = 0; li < 4; li++) { const lt = this.legTips[li]; for (let c = -1; c <= 1; c++) push(lt.p, V3.norm(V3.add(lt.d, [c * .3, -.25, .0])), .26 * S, .06 * S); const T2 = T.legSpikes; for (let k = 0; k < T2; k++) { const q = this.legC[li][Math.min(7, 1 + k)], sxl2 = this.legSx[li], f = 1 - k / Math.max(T2, 1) * .6; push(V3.add(q, [sxl2 * .12 * S, .1 * S, 0]), V3.norm([sxl2 * .55, .75, -.5]), (.1 + .04 * T2) * S * f, (.05 + .01 * T2) * S * f); } }
     // ---- fin on tail end ----
     const ti = R - 1, tp = C[ti], tt = V3.norm(V3.sub(C[ti], C[ti - 3])); let fr = V3.norm(V3.cross([0, 1, 0], tt)); const fu = V3.cross(tt, fr);
     M4.basis(this.finLocal = this.finLocal || new Float32Array(16), fr, fu, V3.mul(tt, -1), tp, 1, 1, 1);
@@ -1558,7 +1569,7 @@ class Dragon {
     // mouth point for fire
     const hmW = this.headM, mouthL = [0, -.05 * S, this.Lh * .96]; this.mouth = [hmW[0] * mouthL[0] + hmW[4] * mouthL[1] + hmW[8] * mouthL[2] + hmW[12], hmW[1] * mouthL[0] + hmW[5] * mouthL[1] + hmW[9] * mouthL[2] + hmW[13], hmW[2] * mouthL[0] + hmW[6] * mouthL[1] + hmW[10] * mouthL[2] + hmW[14]];
     this.mouthDir = [hmW[8], hmW[9], hmW[10]];
-    this.tongueMat.uni.uGlow = heat > .05 ? s.flameCol.map(v => v * (.8 + 1.4 * heat)) : [0, 0, 0];
+    this.tongueMat.uni.uGlow = heat > .05 ? s.flameCol.map(v => v * (.8 + 1.4 * heat)) : this.jaw > .25 ? s.flameCol.map(v => v * .75 * clamp((this.jaw - .2) * 2, 0, 1)) : [0, 0, 0];
   }
   gridNormals(base, nS, nT, sx) {
     const P = this.mPos, N = this.mNrm;
@@ -1760,9 +1771,9 @@ class Game {
     const w = this.world, v = w.villages[0], a = Math.atan2(v.cx, v.cz) + Math.PI, sx = v.cx + Math.sin(a) * 340, sz = v.cz + Math.cos(a) * 340, yaw = Math.atan2(v.cx - sx, v.cz - sz); const st = this.st;
     this.D = { pos: [sx, w.heightAt(sx, sz) + 95, sz], yaw, pitch: 0, roll: 0, yawRate: 0, speed: 0, vel: [0, 0, 0], hp: st.hp, fuel: st.fuel, spec: .35, stam: st.stamina, boost: 0, invul: 0, lashCD: 0, spin: 0, breath: 0, flapEdge: false, lastPh: 0, climbCmd: 0, roar: 0, dead: false, deadT: 0 };
     this.zone = {}; this.world.t0 = this.time; this.snowCov = 0; this.wet = 0; this.volT = 4; this.volFlash = 0; this.camYaw = yaw; this.camPitch = -.12; this.score = 0; this.combo = 0; this.bolts.length = 0; this.fireballs = []; this.fbCD = 0; this.expl = null; this.patches.length = 0; this.alertOn = false; this.stats = { burned: 0, towers: 0, time: 0 };
-    for (const v of w.villages) { v.razed = false; v.pct = 0; v.belled = false; for (const b of v.buildings) { b.heat = 0; b.fire = 0; b.burnT = 0; b.collapse = 0; b.dead = false; b.burning = false; b.char = 0; b.glow = 0; w.setBldMatrix(b); } } w.uploadBuildings(); for (const bl of w.ballistae) { bl.disabled = 0; bl.cd = 3 + Math.random() * 3; }
+    for (const v of w.villages) { v.razed = false; v.pct = 0; v.belled = false; v.mode = null; v.decided = false; v.saved = false; v.lost = false; for (const b of v.buildings) { b.heat = 0; b.fire = 0; b.burnT = 0; b.collapse = 0; b.dead = false; b.burning = false; b.char = 0; b.glow = 0; w.setBldMatrix(b); } } w.uploadBuildings(); for (const bl of w.ballistae) { bl.disabled = 0; bl.cd = 3 + Math.random() * 3; }
     for (const t of w.trees) { if (t.burn !== undefined) { t.burn = undefined; } } for (const m of w.treeMeshes) { for (let i = 0; i < m.n; i++) m.I[i * 4 + 1] = 0; w.eng.updInst(m.mesh, null, m.I); }
-    this.buildHud(); { const l = $('lvl'); if (l) l.remove(); }
+    this.buildHud(); this.encReset(); this.resetMages(); { const l = $('lvl'); if (l) l.remove(); }
   }
   start() { this.sfx.init(); this.sfx.setVol(this.settings.vol); this.resetFlight(); this.D.speed = 36; this.mode = 'play'; $('menu').classList.remove('on'); $('hud').classList.add('on'); if (this.touch) $('touch').classList.add('on'); else try { this.lockPtr(); } catch (e) { } this.toast('SCORCH THE VALLEY'); this.hint('Hold LMB or F to hurl fireballs · Shift to boost'); setTimeout(() => this.hint(''), 9000); }
   toMenu() { this.mode = 'menu'; $('hud').classList.remove('on'); $('touch').classList.remove('on'); $('pause').classList.remove('on'); $('end').classList.remove('on'); $('menu').classList.add('on'); try { document.exitPointerLock(); } catch (e) { } this.resetFlight(); }
@@ -1786,7 +1797,7 @@ class Game {
     $('bPaste').onclick = () => { $('paste').classList.add('on'); $('perr').textContent = ''; }; $('pCancel').onclick = () => $('paste').classList.remove('on');
     $('pOk').onclick = () => { const s = $('pta').value.trim(); try { let j; if (/^(0x)?[0-9a-fA-F]{64}$/.test(s)) { const com = sha256(s + 'local'); j = buildDragonJSON({ id: 9000 + (hashStr(s) % 999), charmOfMaking: com, rawGenome: s.startsWith('0x') ? s : '0x' + s, house: $('pHouse').value, magicElement: $('pMagic').value, eggDensity: 375000, stability: 120000 }); } else j = JSON.parse(s); $('paste').classList.remove('on'); this.setDragon(j); } catch (er) { $('perr').textContent = er.message; } };
     // input
-    addEventListener('keydown', (e) => { const k = e.code; if (this.mode === 'play') { if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(k)) e.preventDefault(); if (k === 'KeyE') this.nova(); if (k === 'KeyQ') this.lash(); if (k === 'KeyR') this.roar(); if (k === 'Escape' || k === 'KeyP') this.pause(); } this.keys[k] = true; });
+    addEventListener('keydown', (e) => { const k = e.code; if (this.mode === 'perk' && this.enc && this.enc.state === 'choose') { if (k === 'Digit1') this.chooseTown(0); else if (k === 'Digit2') this.chooseTown(1); } if (this.mode === 'play') { if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(k)) e.preventDefault(); if (k === 'KeyE') this.nova(); if (k === 'KeyQ') this.lash(); if (k === 'KeyR') this.roar(); if (k === 'Escape' || k === 'KeyP') this.pause(); } this.keys[k] = true; });
     addEventListener('keyup', (e) => { this.keys[e.code] = false; });
     this.canvas.addEventListener('mousedown', (e) => { if (this.mode !== 'play') return; if (!this.touch && document.pointerLockElement !== this.canvas) { try { this.lockPtr(); } catch (er) { } } if (e.button === 0) this.keys.Mouse0 = true; if (e.button === 2) this.nova(); });
     addEventListener('mouseup', (e) => { if (e.button === 0) this.keys.Mouse0 = false; }); addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1814,12 +1825,12 @@ class Game {
   nova() {
     const D = this.D; if (this.mode !== 'play' || D.spec < 1 || D.dead) return; D.spec = 0; const T = this.T, st = this.st, w = this.world, el = T.magic, R = st.novaR, p = D.pos, col = (FLAME[el] || FLAME.FIRE).mid.map(v => v * 1.4);
     this.sfx.nova(el); this.shake = 1; this.fx.ring(p[0], p[1] - 6, p[2], R, col, 140); this.fx.burst(p[0], p[1], p[2], 70, col, 40, 4); this.flash = [col, .9];
-    const targets = []; for (const v of w.villages) for (const b of v.buildings) { const d = Math.hypot(b.x - p[0], b.z - p[2]); if (d < R * 1.4 && b.hard < 1e8 && !b.dead) targets.push([d, b]); } targets.sort((a, b) => a[0] - b[0]);
+    const targets = []; for (const v of w.villages) if (v.mode !== 'defend') for (const b of v.buildings) { const d = Math.hypot(b.x - p[0], b.z - p[2]); if (d < R * 1.4 && b.hard < 1e8 && !b.dead) targets.push([d, b]); } targets.sort((a, b) => a[0] - b[0]);
     for (const [d, b] of targets) { const f = 1 - d / (R * 1.4); if (el === 'AIR') { if (targets.indexOf(targets.find(t => t[1] === b)) < 8 + T.prof * 2) { b.heat += 4 * st.dmg; this.fx.bolt(b.x + (Math.random() - .5) * 20, b.y + 220, b.z + (Math.random() - .5) * 20, b.x, b.y + b.top, b.z, [.8, .8, 1.4]); } } else if (el === 'WATER') { b.heat += 1.4 * f * st.dmg + .5; this.fx.smokePuff(b.x, b.y + b.top, b.z, 12, false); } else if (el === 'EARTH') { b.heat += 2.6 * f * st.dmg; this.fx.burst(b.x, b.y + 2, b.z, 6, [.9, .7, .4], 12, 3); } else b.heat += 3.5 * f * st.dmg; }
     for (const bl of w.ballistae) { const d = Math.hypot(bl.b.x - p[0], bl.b.z - p[2]); if (d < R * 1.5) bl.disabled = 7 + T.prof * 2; } if (el === 'WATER') for (const q of this.patches) q.t = 0; this.bolts.length = 0;
-    this.toast(MAGIC_NAME[el].toUpperCase());
+    this.toast(MAGIC_NAME[el].toUpperCase()); this.novaFoe(R); this.mageBlast(this.D.pos, R * 1.1);
   }
-  lash() { const D = this.D; if (this.mode !== 'play' || D.lashCD > 0 || D.dead) return; D.lashCD = this.st.lashCD; D.spin = 1; D.invul = .9; this.sfx.flap(1.5); this.sfx.noiseHit && this.sfx.noiseHit(this.sfx.ctx.currentTime, 900, 1, .02, .5, .4); for (const v of this.world.villages) for (const b of v.buildings) if (b.hard < 1e8 && !b.dead && Math.hypot(b.x - D.pos[0], b.z - D.pos[2]) < 24 + b.r && D.pos[1] < b.y + b.top + 14) { b.heat += 1.2 + this.T.tailStr * .35; this.fx.burst(b.x, b.y + b.top, b.z, 8, [1.4, 1.1, .6], 14, 2.5); } }
+  lash() { const D = this.D; if (this.mode !== 'play' || D.lashCD > 0 || D.dead) return; D.lashCD = this.st.lashCD; D.spin = 1; D.invul = .9; this.lashFoe(); this.sfx.flap(1.5); this.sfx.noiseHit && this.sfx.noiseHit(this.sfx.ctx.currentTime, 900, 1, .02, .5, .4); for (const v of this.world.villages) if (v.mode !== 'defend') for (const b of v.buildings) if (b.hard < 1e8 && !b.dead && Math.hypot(b.x - D.pos[0], b.z - D.pos[2]) < 24 + b.r && D.pos[1] < b.y + b.top + 14) { b.heat += 1.2 + this.T.tailStr * .35; this.fx.burst(b.x, b.y + b.top, b.z, 8, [1.4, 1.1, .6], 14, 2.5); } }
   roar() { const D = this.D; if (D.roar > 0 || D.dead) return; D.roar = 1.6; this.sfx.roar(this.T.size); this.shake = .5; for (const v of this.world.villages) if (Math.hypot(v.cx - D.pos[0], v.cz - D.pos[2]) < v.R + 500) this.setAlert(v.idx); this.world.people.forEach(p => { if (Math.hypot(p.x - D.pos[0], p.z - D.pos[2]) < 220) p.panic = 1; }); }
   damage(n) { const D = this.D; if (D.invul > 0 || D.dead || this.mode !== 'play') return; n *= 1 + .5 * smooth(.45, .9, this.wr || 0) + .12 * (this.wr || 0) + 2 * smooth(.2, .7, this.ws || 0); D.hp -= n * this.st.armor; this.hurtT = 1; this.shake = Math.max(this.shake, .7); this.dragon.hurt = 1; this.sfx.hit(n > 12); this.combo = 0; if (D.hp <= 0) { D.hp = 0; D.dead = true; D.deadT = 0; this.fx.burst(D.pos[0], D.pos[1], D.pos[2], 60, [2, .8, .2], 30, 5); this.sfx.boom(1); } }
   // ---------------- simulation ----------------
@@ -1845,7 +1856,7 @@ class Game {
       // terrain / bounds / buildings
       const gy = w.heightAt(D.pos[0], D.pos[2]) + 4; if (D.pos[1] < gy) { if (D.vel[1] < -12 && D.speed > 25) { this.damage(6 + Math.max(0, -D.vel[1] * .25)); this.fx.burst(D.pos[0], gy, D.pos[2], 14, [.6, .5, .4], 16, 3); this.fx.smokePuff(D.pos[0], gy, D.pos[2], 7, false); } D.pos[1] = gy; D.pitch = Math.max(D.pitch, .05); this.camPitch = Math.max(this.camPitch, .02); D.speed *= (1 - dt * .6); }
       if (D.pos[1] > 1150) { D.pos[1] = 1150; D.pitch = Math.min(D.pitch, 0); } const rr = Math.hypot(D.pos[0], D.pos[2]); this.warn = rr > 1380 * WF; if (this.warn) { const a = Math.atan2(-D.pos[0], -D.pos[2]); this.camYaw += clamp(wrapA(a - this.camYaw), -1, 1) * dt * 1.8; }
-      for (const v of w.villages) if (Math.hypot(D.pos[0] - v.cx, D.pos[2] - v.cz) < v.R + 60) for (const b of v.buildings) { if (b.dead || b.type === 'wall' || b.minor) continue; const dx = D.pos[0] - b.x, dz = D.pos[2] - b.z, rad = b.r * .78 + 2; if (dx * dx + dz * dz < rad * rad && D.pos[1] < b.y + b.top * (1 - .8 * b.collapse) + 3.5) { D.pos[1] = b.y + b.top * (1 - .8 * b.collapse) + 3.5; if (D.invul <= 0) { this.damage(8); b.heat += .6; this.fx.burst(D.pos[0], D.pos[1] - 2, D.pos[2], 12, [1.4, 1, .5], 14, 2.5); D.speed *= .8; D.invul = .5; } } }
+      for (const v of w.villages) if (Math.hypot(D.pos[0] - v.cx, D.pos[2] - v.cz) < v.R + 60) for (const b of v.buildings) { if (b.dead || b.type === 'wall' || b.minor) continue; const dx = D.pos[0] - b.x, dz = D.pos[2] - b.z, rad = b.r * .78 + 2; if (dx * dx + dz * dz < rad * rad && D.pos[1] < b.y + b.top * (1 - .8 * b.collapse) + 3.5) { D.pos[1] = b.y + b.top * (1 - .8 * b.collapse) + 3.5; if (D.invul <= 0) { this.damage(8); if (v.mode !== 'defend') b.heat += .6; this.fx.burst(D.pos[0], D.pos[1] - 2, D.pos[2], 12, [1.4, 1, .5], 14, 2.5); D.speed *= .8; D.invul = .5; } } }
       // regen
       D.spec = clamp(D.spec + dt / st.novaTime, 0, 1); if (D.hp > 0 && this.hurtT <= 0) D.hp = Math.min(st.hp, D.hp + (1.6 + (st.regenHp || 0)) * dt);
     }
@@ -1862,12 +1873,12 @@ class Game {
     // ---- breath ----
     if (D.breath > .3) this.breathe(dt, B);
     // ---- world sims ----
-    this.simFireballs(dt); this.checkLevel(); this.simBuildings(dt); w.updateTrees(dt, this.fx); this.simDefenders(dt); this.simPatches(dt);
+    this.simFireballs(dt); this.checkLevel(); this.simBuildings(dt); w.updateTrees(dt, this.fx); this.simDefenders(dt); this.simPatches(dt); this.simEnc(dt); this.simFoeBalls(dt); this.simMages(dt);
     if ((this.t10 = (this.t10 || 0) + dt) > .1) { this.t10 = 0; w.updatePeople(.1, D.pos, this.alertOn); }
     // alert by proximity
     for (const v of w.villages) if (!v.belled && Math.hypot(D.pos[0] - v.cx, D.pos[2] - v.cz) < v.R + 160 && S.def) this.setAlert(v.idx);
     // victory
-    if (this.mode === 'play' && !D.dead && w.villages.every(v => v.razed)) this.endGame(true);
+    if (this.mode === 'play' && !D.dead && w.villages.every(v => v.razed || v.saved)) this.endGame(true);
     G.uTime = this.time;
   }
   // ---- landmark weather & volcano ----
@@ -1913,8 +1924,9 @@ class Game {
       const f = this.fireballs[i]; f.t += dt; let hit = false; const steps = Math.max(1, Math.ceil(dt * 150 / 5)), h = dt / steps;
       for (let s = 0; s < steps && !hit; s++) {
         f.p[0] += f.v[0] * h; f.p[1] += f.v[1] * h; f.p[2] += f.v[2] * h; f.v[1] -= 10 * h;
-        if (f.p[1] < w.heightAt(f.p[0], f.p[2]) + f.R * .4) hit = true;
-        else for (const v of w.villages) { if (Math.hypot(f.p[0] - v.cx, f.p[2] - v.cz) > v.R + 60) continue; for (const b of v.buildings) { if (b.dead || b.type === 'wall' || b.minor) continue; const dx = f.p[0] - b.x, dz = f.p[2] - b.z, rad = b.r * .85 + f.R * .5; if (dx * dx + dz * dz < rad * rad && f.p[1] < b.y + b.top * (1 - .8 * b.collapse) + f.R * .5) { hit = true; f.direct = b; break; } } if (hit) break; }
+        if (this.foeHitTest(f)) hit = true;
+        else if (f.p[1] < w.heightAt(f.p[0], f.p[2]) + f.R * .4) hit = true;
+        else for (const v of w.villages) { if (v.mode === 'defend' || Math.hypot(f.p[0] - v.cx, f.p[2] - v.cz) > v.R + 60) continue; for (const b of v.buildings) { if (b.dead || b.type === 'wall' || b.minor) continue; const dx = f.p[0] - b.x, dz = f.p[2] - b.z, rad = b.r * .85 + f.R * .5; if (dx * dx + dz * dz < rad * rad && f.p[1] < b.y + b.top * (1 - .8 * b.collapse) + f.R * .5) { hit = true; f.direct = b; break; } } if (hit) break; }
       }
       const R = f.R, P = f.p, nd = V3.norm(f.v), j = (k) => (r() - .5) * k;
       { const hot = col.core.map(v => v * 1.3), mid = col.mid.map(v => v * 1.15), ph = f.t * 9;
@@ -1929,8 +1941,8 @@ class Game {
       if (hit || f.t > 4) { this.fireballs.splice(i, 1); if (hit) this.explode(P, R, f.direct); }
     }
   }
-  explode(P, R0, direct) {
-    const w = this.world, fx = this.fx, st = this.st, T = this.T, r = Math.random, col = fx.fl, BR = 42 * Math.sqrt(st.dmg) * (.95 + .08 * T.prof) * this.pk.blast, gy = w.heightAt(P[0], P[2]);
+  explode(P, R0, direct, fo) {
+    const w = this.world, fx = this.fx, st = this.st, T = this.T, r = Math.random, col = fo ? fo.col : fx.fl, BR = fo ? fo.BR : 42 * Math.sqrt(st.dmg) * (.95 + .08 * T.prof) * this.pk.blast, gy = w.heightAt(P[0], P[2]);
     const sc = BR / 42; fx.burst(P[0], gy + 4, P[2], 60, col.core.map(v => v * .9), 46, 5); fx.ring(P[0], gy + 1.2, P[2], BR * 1.1, col.mid.map(v => v * 1.2), 90);
     fx.glow(P[0], gy + 6, P[2], BR * 1.5, col.core.map(v => v * 1.6), .22, .9, BR * 2.8); fx.glow(P[0], gy + 8, P[2], BR * .9, col.mid.map(v => v * 1.2), .5, .55, BR * 1.7); // flash + afterglow
     for (let i = 0; i < 56; i++) { const a = r() * TAU, b = r() * 1.3 - .25, k = Math.sqrt(Math.max(0, 1 - b * b)), sp = (8 + r() * 24) * sc; fx.fire.spawn(P[0], gy + 4, P[2], Math.cos(a) * k * sp, Math.abs(b) * sp * 1.2 + 10 * sc, Math.sin(a) * k * sp, .8 + r() * .9, (5 + r() * 4) * sc, (14 + r() * 10) * sc, col.core.map(v => v * .85), col.end, .5, 1.8, -6); } // billowing fireball
@@ -1941,8 +1953,187 @@ class Game {
     for (let i = 0; i < 10; i++) fx.smokePuff(P[0] + (r() - .5) * BR * .6, gy + 4 + r() * 8, P[2] + (r() - .5) * BR * .6, 16 + r() * 14, true); for (let i = 0; i < 14; i++) fx.ember(P[0] + (r() - .5) * 10, gy + 3, P[2] + (r() - .5) * 10);
     this.sfx.boom(1.2); const cp = this.cam.pos, dc = Math.hypot(P[0] - cp[0], P[1] - cp[1], P[2] - cp[2]); this.shake = Math.max(this.shake, clamp(1 - dc / 420, 0, 1) * .9); this.expl = { t: 1, p: [P[0], gy + 8, P[2]], col: col.mid };
     w.scorch(P[0], P[2], BR * .5); w.scorch(P[0] + (r() - .5) * BR * .5, P[2] + (r() - .5) * BR * .5, BR * .35); w.igniteTrees(P[0], P[2], BR * .9); if (this.patches.length < 30) for (let i = 0; i < 4; i++) this.patches.push({ x: P[0] + (r() - .5) * BR, y: gy, z: P[2] + (r() - .5) * BR, t: 5 + r() * 5 });
-    for (const v of w.villages) { if (Math.hypot(P[0] - v.cx, P[2] - v.cz) > v.R + BR + 40) continue; for (const b of v.buildings) { if (b.dead || b.hard > 1e8) continue; const d = Math.hypot(b.x - P[0], b.z - P[2]) - b.r; if (d > BR) continue; const fo = 1 - Math.max(d, 0) / BR; b.heat += (b.hard + 2.5) * (1.4 * fo * fo + .25 * fo) * st.dmg + (b === direct ? b.hard * 1.5 : 0); } }
-    for (const bl of w.ballistae) if (Math.hypot(bl.b.x - P[0], bl.b.z - P[2]) < BR * 1.2) bl.disabled = Math.max(bl.disabled, 3); for (const p of w.people) if (Math.hypot(p.x - P[0], p.z - P[2]) < BR * 3) p.panic = 1;
+    for (const v of w.villages) { if ((!fo && v.mode === 'defend') || Math.hypot(P[0] - v.cx, P[2] - v.cz) > v.R + BR + 40) continue; for (const b of v.buildings) { if (b.dead || b.hard > 1e8) continue; const d = Math.hypot(b.x - P[0], b.z - P[2]) - b.r; if (d > BR) continue; const fq = 1 - Math.max(d, 0) / BR; b.heat += (b.hard + 2.5) * (1.4 * fq * fq + .25 * fq) * (fo ? fo.dmg : st.dmg) + (b === direct ? b.hard * 1.5 : 0); } }
+    for (const bl of w.ballistae) if (Math.hypot(bl.b.x - P[0], bl.b.z - P[2]) < BR * 1.2 && (fo ? w.villages[bl.b.vil].mode === 'defend' : w.villages[bl.b.vil].mode !== 'defend')) bl.disabled = Math.max(bl.disabled, 3); for (const p of w.people) if (Math.hypot(p.x - P[0], p.z - P[2]) < BR * 3) p.panic = 1; if (!fo) { this.fireballFoe(P, BR); this.mageBlast(P, BR); } else this.foeSplash(P, fo.BR);
+  }
+
+  // ---------------- town encounters: attack or defend ----------------
+  encReset() {
+    this.enc = null; this.foe = null; this.foeBalls = []; this.encCfg = { grace: 60, rate: 2.6, BR: 26, dmg: 1, foeHp: 420, lose: .75 };
+    { const o = $('town'); if (o) o.remove(); }
+    if (!$('enc')) {
+      const d = document.createElement('div'); d.id = 'enc'; d.style.cssText = 'position:absolute;top:10px;left:50%;transform:translateX(-50%);width:min(500px,58vw);text-align:center;pointer-events:none;text-shadow:0 2px 8px #000;display:none';
+      d.innerHTML = `<div id="encT" style="font:700 15px Cinzel,Georgia,serif;letter-spacing:.28em;color:#ffcf80"></div><div id="encS" style="font:600 12px Inter,system-ui,sans-serif;letter-spacing:.16em;color:#fff;margin:3px 0 7px"></div>
+<div id="encFoeW" style="display:none;margin-bottom:6px"><div style="font:600 10px Inter,system-ui,sans-serif;letter-spacing:.2em;color:#ff9a8a;text-align:left;margin-bottom:2px">RIVAL DRAGON</div><div style="height:9px;background:rgba(0,0,0,.55);border:1px solid rgba(255,140,120,.55);border-radius:5px;overflow:hidden"><i id="encFoe" style="display:block;height:100%;width:100%;background:linear-gradient(90deg,#c2281c,#ff7a4a)"></i></div></div>
+<div><div style="font:600 10px Inter,system-ui,sans-serif;letter-spacing:.2em;color:#a8e8a8;text-align:left;margin-bottom:2px">TOWN INTEGRITY · <span id="encTv"></span></div><div style="height:9px;background:rgba(0,0,0,.55);border:1px solid rgba(160,230,160,.55);border-radius:5px;overflow:hidden"><i id="encTown" style="display:block;height:100%;width:100%;background:linear-gradient(90deg,#d94a2a,#e8c24a 45%,#6fd36f)"></i></div></div>`;
+      $('hud').appendChild(d);
+    }
+    $('enc').style.display = 'none';
+  }
+  foeDragon() {
+    const NP = Math.min(this.presets.length, PRESET_SPECS.length); let me = this.presets.indexOf(this.json); if (me < 0) me = 0; const k = (me + 3) % NP; this.foeCache = this.foeCache || {};
+    if (!this.foeCache[k]) { const T2 = loadDragon(this.presets[k]); this.foeCache[k] = { d: new Dragon(this.eng, T2), T: T2 }; } return this.foeCache[k];
+  }
+  askTown(v) {
+    this.enc = { v, state: 'choose', t: 0 }; this.mode = 'perk'; this.keys.Mouse0 = false; try { document.exitPointerLock(); } catch (e) { } this.sfx.bell();
+    const ov = document.createElement('div'); ov.id = 'town'; ov.style.cssText = 'position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(8,6,12,.7);backdrop-filter:blur(6px);font-family:Inter,system-ui,sans-serif;color:#f4ead2';
+    ov.innerHTML = `<div style="letter-spacing:.35em;color:#ffcf80;font-size:13px">ENTERING ${v.name.toUpperCase()}</div><div style="font:700 34px Cinzel,Georgia,serif;letter-spacing:.12em">ATTACK OR DEFEND?</div><div style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center;padding:0 16px"></div><div style="font-size:12px;color:#a9a18f;letter-spacing:.1em">Press 1 to attack · 2 to defend</div>`;
+    const row = ov.children[2], mk = (title, body, col, bg, fn) => { const b = document.createElement('button'); b.style.cssText = `width:270px;padding:22px 18px;border:1px solid ${col};border-radius:12px;background:${bg};color:#f4ead2;cursor:pointer;text-align:left;font:inherit`; b.innerHTML = `<div style="font:700 19px Georgia,serif;color:${col};margin-bottom:9px">${title}</div><div style="font-size:13px;line-height:1.5;color:#d8cdb4">${body}</div>`; b.onclick = fn; row.appendChild(b); };
+    mk('⚔ ATTACK', `Burn ${v.name} to the ground. Its ballistae will fire at you.`, '#ff9a5a', 'linear-gradient(180deg,rgba(80,34,16,.92),rgba(26,14,10,.94))', () => this.chooseTown(0));
+    mk('🛡 DEFEND', `A rival dragon strikes after ${this.encCfg.grace} seconds. Slay it before the town loses ${Math.round(this.encCfg.lose * 100)}%. Your fire will not harm the town and its ballistae fight beside you.`, '#8fd6ff', 'linear-gradient(180deg,rgba(18,44,66,.92),rgba(12,18,26,.94))', () => this.chooseTown(1));
+    document.body.appendChild(ov);
+  }
+  chooseTown(def) {
+    const e = this.enc; if (!e || e.state !== 'choose') return; const v = e.v; { const o = $('town'); if (o) o.remove(); }
+    this.mode = 'play'; this.last = performance.now(); if (!this.touch) { this.noPause = true; this.lockPtr(); setTimeout(() => this.noPause = false, 600); }
+    if (def) { try { e.foeD = this.foeDragon(); } catch (er) { console.error(er); def = 0; this.toast('NO RIVAL COULD BE SUMMONED'); } }
+    if (!def) { v.mode = 'attack'; this.enc = null; this.toast('ATTACK — BURN ' + v.name.toUpperCase()); this.mageAlert(v); return; }
+    v.mode = 'defend'; e.state = 'grace'; e.t = this.encCfg.grace; this.setAlert(v.idx); this.toast('DEFEND ' + v.name.toUpperCase()); this.hint('Your fire will not harm ' + v.name + '. Ballistae will help you. Prepare!'); setTimeout(() => this.hint(''), 8000);
+  }
+  spawnFoe() {
+    const e = this.enc, v = e.v, w = this.world, c = this.encCfg, k = e.foeD, a = Math.random() * TAU, px = v.cx + Math.sin(a) * (v.R + 800), pz = v.cz + Math.cos(a) * (v.R + 800);
+    this.foe = { d: k.d, T: k.T, pos: [px, w.heightAt(px, pz) + 170, pz], yaw: Math.atan2(v.cx - px, v.cz - pz), pitch: 0, roll: 0, yawRate: 0, speed: 46, vel: [0, 0, 0], hp: c.foeHp, max: c.foeHp, breath: 0, breathT: 0, cd: 4, mood: 6, retarget: 0, hurt: 0, dead: false, deadT: 0, gone: false, t: 0, rad: 11 * k.d.S, roarT: 1.5, tb: null, duel: false };
+    e.state = 'fight'; this.toast('A RIVAL DRAGON DESCENDS'); this.sfx.roar(k.T.size); this.shake = Math.max(this.shake, .6); this.simFoe(.001);
+  }
+  simEnc(dt) {
+    const D = this.D, w = this.world, e = this.enc;
+    if (!e) { if (D.dead || this.stats.time < 2) return; for (const v of w.villages) { if (v.decided || v.razed || v.saved || v.lost) continue; if (Math.hypot(D.pos[0] - v.cx, D.pos[2] - v.cz) < v.R * .8 && D.pos[1] - w.heightAt(D.pos[0], D.pos[2]) < 420) { v.decided = true; this.askTown(v); return; } } return; }
+    if (e.state === 'choose') return; const v = e.v;
+    if (e.state === 'grace') { e.t -= dt; if (e.t <= 0) this.spawnFoe(); }
+    else if (e.state === 'fight') { this.simFoe(dt); if (this.foe && !this.foe.dead && v.pct >= this.encCfg.lose) this.loseTown(); }
+    else { e.t -= dt; this.simFoe(dt); if (e.t <= 0 || !this.foe || this.foe.gone) { this.foe = null; this.enc = null; $('enc').style.display = 'none'; } }
+  }
+  loseTown() {
+    const e = this.enc, v = e.v; e.state = 'lost'; e.t = 10; v.mode = 'attack'; v.lost = true; this.toast(v.name.toUpperCase() + ' HAS FALLEN'); this.sfx.roar(this.foe.T.size); this.shake = Math.max(this.shake, .5); this.foe.roarT = 1.5;
+  }
+  hurtFoe(n) {
+    const F = this.foe; if (!F || F.dead || F.gone) return; F.hp -= n; F.hurt = 1; F.d.hurt = 1; this.sfx.hit(n > 20); this.addScore(Math.round(n * 2)); this.fx.burst(F.pos[0] + (Math.random() - .5) * 8, F.pos[1] + (Math.random() - .5) * 4, F.pos[2] + (Math.random() - .5) * 8, 10, [2, .9, .3], 16, 3);
+    if (F.hp <= 0) this.killFoe();
+  }
+  killFoe() {
+    const F = this.foe, e = this.enc, v = e.v; F.hp = 0; F.dead = true; F.deadT = 0; e.state = 'won'; e.t = 12; v.saved = true; this.stats.saved = (this.stats.saved || 0) + 1;
+    this.score += 2500 + Math.round(1500 * Math.max(0, 1 - v.pct / this.encCfg.lose)); this.toast(v.name.toUpperCase() + ' IS SAVED'); this.sfx.bell(); this.sfx.boom(1); this.shake = Math.max(this.shake, .8); this.hint('');
+  }
+  foeHitTest(f) { const F = this.foe; if (!F || F.dead || F.gone || !this.enc || this.enc.state !== 'fight') return false; if (V3.len(V3.sub(f.p, F.pos)) < F.rad + f.R * .5) { f.direct = null; return true; } return false; }
+  fireballFoe(P, BR) {
+    const F = this.foe; if (!F || F.dead || F.gone || !this.enc || this.enc.state !== 'fight') return; const d = Math.hypot(P[0] - F.pos[0], P[1] - F.pos[1], P[2] - F.pos[2]) - F.rad, rr = BR * .8; if (d > rr) return;
+    const fo = 1 - Math.max(d, 0) / rr; this.hurtFoe(40 * this.st.dmg * (.3 + .7 * fo));
+  }
+  novaFoe(R) { const F = this.foe, D = this.D; if (!F || F.dead || F.gone || !this.enc || this.enc.state !== 'fight') return; const d = V3.len(V3.sub(D.pos, F.pos)); if (d < R * 1.3) this.hurtFoe(95 * this.st.dmg * (1 - .6 * d / (R * 1.3))); }
+  lashFoe() { const F = this.foe, D = this.D; if (!F || F.dead || F.gone || !this.enc || this.enc.state !== 'fight') return; if (V3.len(V3.sub(D.pos, F.pos)) < F.rad + 30) this.hurtFoe(26); }
+  foeSplash(P, BR) { const D = this.D; if (D.dead) return; if (Math.hypot(P[0] - D.pos[0], P[1] - D.pos[1], P[2] - D.pos[2]) < BR * .7) this.damage(9); }
+  foePick(v, F) {
+    let best = null, bs = 1e9; for (const b of v.buildings) { if (b.dead || b.burning || b.minor || b.type === 'wall' || b.hard > 1e8) continue; const dx = b.x - F.pos[0], dz = b.z - F.pos[2], d = Math.hypot(dx, dz), ang = Math.abs(wrapA(Math.atan2(dx, dz) - F.yaw)), sc = Math.abs(d - 260) + ang * 110 + Math.random() * 90 - b.score * .04; if (sc < bs) { bs = sc; best = b; } } return best;
+  }
+  foeShoot(F, goal, col) {
+    const m = F.d.mouth, dist = V3.len(V3.sub(goal, m)), sp = 120, t = dist / sp, aim = [goal[0], goal[1] + 3 * t * t, goal[2]], dd = V3.norm(V3.sub(aim, m)), sd = [m[0] + dd[0] * 5, m[1] + dd[1] * 5, m[2] + dd[2] * 5], r = Math.random;
+    this.foeBalls.push({ p: sd, v: [dd[0] * sp, dd[1] * sp, dd[2] * sp], t: 0, R: 5, col }); F.breathT = .45; F.d.shot(); F.roarT = .5; this.sfx.boom(.5);
+    this.fx.glow(sd[0], sd[1], sd[2], 7, col.core.map(v => v * 1.1), .16, .8, 11); for (let n = 0; n < 18; n++) this.fx.spark(sd[0], sd[1], sd[2], (dd[0] + (r() - .5) * .9) * (30 + r() * 60), (dd[1] + (r() - .5) * .9) * (30 + r() * 60) + 3, (dd[2] + (r() - .5) * .9) * (30 + r() * 60), .35 + r() * .5, col.core.map(v => v * 1.3));
+  }
+  simFoeBalls(dt) {
+    const L = this.foeBalls; if (!L || !L.length) return; const w = this.world, D = this.D, fx = this.fx, r = Math.random, cfg = this.encCfg;
+    for (let i = L.length - 1; i >= 0; i--) {
+      const f = L[i], col = f.col; f.t += dt; let hit = false, direct = null; const steps = Math.max(1, Math.ceil(dt * 120 / 5)), h = dt / steps;
+      for (let s2 = 0; s2 < steps && !hit; s2++) {
+        f.p[0] += f.v[0] * h; f.p[1] += f.v[1] * h; f.p[2] += f.v[2] * h; f.v[1] -= 6 * h;
+        if (f.p[1] < w.heightAt(f.p[0], f.p[2]) + f.R * .4) hit = true;
+        else if (!D.dead && Math.hypot(f.p[0] - D.pos[0], f.p[1] - D.pos[1], f.p[2] - D.pos[2]) < 4.5 * this.T.size + f.R * .5) { hit = true; this.damage(14); }
+        else for (const v of w.villages) { if (Math.hypot(f.p[0] - v.cx, f.p[2] - v.cz) > v.R + 60) continue; for (const b of v.buildings) { if (b.dead || b.type === 'wall' || b.minor) continue; const dx = f.p[0] - b.x, dz = f.p[2] - b.z, rad = b.r * .85 + f.R * .5; if (dx * dx + dz * dz < rad * rad && f.p[1] < b.y + b.top * (1 - .8 * b.collapse) + f.R * .5) { hit = true; direct = b; break; } } if (hit) break; }
+      }
+      const P = f.p, R = f.R, nd = V3.norm(f.v), j = (k) => (r() - .5) * k, hot = col.core.map(v => v * 1.3), mid = col.mid.map(v => v * 1.1);
+      fx.fire.spawn(P[0], P[1], P[2], 0, 0, 0, .07, R * 4.4, R * 4.8, col.mid.map(v => v * .3), col.mid.map(v => v * .2), .5, 0, 0, 2); fx.fire.spawn(P[0], P[1], P[2], 0, 0, 0, .08, R * 2, R * 2.2, hot, col.core, .95, 0, 0, 2);
+      for (let n = Math.floor(90 * dt + r()); n > 0; n--) { const a = r() * TAU, b = r() * 2 - 1, k = Math.sqrt(1 - b * b), q = R * (.25 + r() * .5); fx.fire.spawn(P[0] + Math.cos(a) * k * q, P[1] + b * q, P[2] + Math.sin(a) * k * q, j(5), j(5), j(5), .16 + r() * .18, R * 1.5, R * 2.5, mid, col.end, .5, 2.5, -3); }
+      for (let n = Math.floor(110 * dt + r()); n > 0; n--) { const k = r() * R * 2.2, sp = 8 + r() * 22; fx.fire.spawn(P[0] - nd[0] * k + j(R * .6), P[1] - nd[1] * k + j(R * .6), P[2] - nd[2] * k + j(R * .6), -nd[0] * sp + j(8), -nd[1] * sp + j(8), -nd[2] * sp + j(8), .5 + r() * .8, R * .9, R * 2.6, mid, col.end, .24, 1.4, -4.5); }
+      for (let n = Math.floor(45 * dt + r()); n > 0; n--) fx.spark(P[0] + j(R), P[1] + j(R), P[2] + j(R), -nd[0] * (10 + r() * 30) + j(22), -nd[1] * (10 + r() * 30) + j(22) + 6, -nd[2] * (10 + r() * 30) + j(22), .5 + r(), hot);
+      if (r() < dt * 40) fx.smokePuff(P[0] - nd[0] * R, P[1] - nd[1] * R, P[2] - nd[2] * R, R * 1.7, true);
+      if (hit || f.t > 6) { L.splice(i, 1); if (hit) this.explode(P, R, direct, { col, BR: cfg.BR, dmg: cfg.dmg }); }
+    }
+  }
+  simFoe(dt) {
+    const F = this.foe, e = this.enc; if (!F || F.gone || !e) return; const v = e.v, D = this.D, w = this.world, fx = this.fx, r = Math.random, col = FLAME[F.T.magic] || FLAME.FIRE, cfg = this.encCfg;
+    F.t += dt; F.hurt = Math.max(0, F.hurt - dt * 2); F.cd -= dt; F.breathT = Math.max(0, F.breathT - dt); F.roarT = Math.max(0, F.roarT - dt);
+    let aimP = [F.pos[0] + Math.sin(F.yaw) * 100, F.pos[1], F.pos[2] + Math.cos(F.yaw) * 100];
+    if (F.dead) {
+      F.deadT += dt; F.pitch = lerp(F.pitch, -1.1, clamp(dt, 0, 1)); F.speed = lerp(F.speed, 30, clamp(dt, 0, 1)); F.roll += dt * 3; const f = this.headingVec(F.yaw, F.pitch);
+      F.pos[0] += f[0] * F.speed * dt; F.pos[2] += f[2] * F.speed * dt; F.pos[1] += (f[1] * F.speed - 24 * F.deadT) * dt; F.vel = [f[0] * F.speed, f[1] * F.speed - 24 * F.deadT, f[2] * F.speed];
+      if (r() < dt * 60) fx.flame(F.pos[0] + (r() - .5) * 12, F.pos[1] + (r() - .5) * 4, F.pos[2] + (r() - .5) * 12, 3); if (r() < dt * 30) fx.smokePuff(F.pos[0], F.pos[1], F.pos[2], 8, true);
+      const gy = w.heightAt(F.pos[0], F.pos[2]) + 4; if (F.pos[1] <= gy || F.deadT > 9) { this.explode([F.pos[0], gy, F.pos[2]], 8, null, { col, BR: 34, dmg: 0 }); F.gone = true; return; }
+    } else {
+      let goal, wantAlt = 90, maxSp = 46; const dp = V3.len(V3.sub(D.pos, F.pos));
+      if (e.state === 'lost') { const a = Math.atan2(F.pos[0] - v.cx, F.pos[2] - v.cz); goal = [F.pos[0] + Math.sin(a) * 900, F.pos[1], F.pos[2] + Math.cos(a) * 900]; wantAlt = 320; maxSp = 60; }
+      else {
+        F.mood -= dt; if (F.mood <= 0) { F.duel = !D.dead && dp < 520 && r() < .4; F.mood = F.duel ? 7 : 10 + r() * 6; F.retarget = 0; } if (F.duel && (D.dead || dp > 700)) F.duel = false;
+        if (!F.duel) { F.retarget -= dt; if (!F.tb || F.tb.dead || F.tb.burning || F.retarget <= 0) { F.tb = this.foePick(v, F); F.retarget = 8 + r() * 4; } }
+        if (F.duel) { const tt = dp / 120; goal = [D.pos[0] + D.vel[0] * tt * .6, D.pos[1] + D.vel[1] * tt * .6, D.pos[2] + D.vel[2] * tt * .6]; wantAlt = null; }
+        else if (F.tb) goal = [F.tb.x, F.tb.y + F.tb.top, F.tb.z]; else { const a = F.t * .15; goal = [v.cx + Math.sin(a) * 200, 0, v.cz + Math.cos(a) * 200]; }
+      }
+      const dx = goal[0] - F.pos[0], dz = goal[2] - F.pos[2], hd = Math.hypot(dx, dz), ye = wrapA(Math.atan2(dx, dz) - F.yaw);
+      if (!F.duel && hd < 90 && e.state !== 'lost') F.retarget = 0;
+      F.yawRate = lerp(F.yawRate, clamp(ye * 2.4, -1.15, 1.15), clamp(dt * 4, 0, 1)); F.yaw += F.yawRate * dt;
+      const gy0 = w.heightAt(F.pos[0], F.pos[2]); let wy = wantAlt === null ? goal[1] : gy0 + (hd < 260 && e.state !== 'lost' ? 62 : wantAlt); wy = Math.max(wy, gy0 + 40);
+      const pe = clamp(Math.atan2(wy - F.pos[1], Math.max(hd, 60)), -.5, .5) - F.pitch; F.pitch += clamp(pe * 2, -.9, .9) * dt;
+      F.speed = lerp(F.speed, maxSp, clamp(dt * .8, 0, 1)); F.roll = lerp(F.roll, clamp(F.yawRate * .6, -.9, .9), clamp(dt * 4, 0, 1));
+      const f = this.headingVec(F.yaw, F.pitch); F.vel = [f[0] * F.speed, f[1] * F.speed, f[2] * F.speed]; for (let i = 0; i < 3; i++) F.pos[i] += F.vel[i] * dt;
+      let floor = w.heightAt(F.pos[0], F.pos[2]) + 26; for (const b of v.buildings) { if (b.dead || b.minor || b.type === 'wall') continue; const ddx = F.pos[0] - b.x, ddz = F.pos[2] - b.z; if (ddx * ddx + ddz * ddz < (b.r + 14) ** 2) floor = Math.max(floor, b.y + b.top + 16); }
+      if (F.pos[1] < floor) { F.pos[1] = floor; F.pitch = Math.max(F.pitch, .08); } if (F.pos[1] > 700) F.pos[1] = 700;
+      aimP = goal;
+      if (e.state === 'fight' && F.cd <= 0 && F.d.mouth && Math.abs(ye) < .3 && hd < (F.duel ? 480 : 400) && hd > 55) { this.foeShoot(F, goal, col); F.cd = cfg.rate * (F.duel ? .75 : 1) * (.85 + r() * .4); }
+      if (!D.dead && dp < F.rad * .8 && D.invul <= 0) { this.damage(9); D.invul = .6; D.speed *= .7; }
+    }
+    const B = this.basis(F.yaw, F.pitch, F.roll), m = F.d.mouth || F.pos, av = V3.sub(aimP, m), lx = V3.dot(av, B.r), ly = V3.dot(av, B.u), lz = V3.dot(av, B.f);
+    F.breath = lerp(F.breath, F.breathT > 0 ? 1 : 0, clamp(dt * 9, 0, 1));
+    F.d.update(dt, { pos: F.pos, r: B.r, u: B.u, f: B.f, flapAmp: F.dead ? .3 : .9, flapFreq: .62 + .2 * Math.sin(F.t * .5), flight: 1, turn: clamp(F.yawRate * .5, -.5, .5), climb: clamp(Math.sin(F.pitch), -1, 1), aimYaw: F.dead ? 0 : clamp(Math.atan2(lx, lz), -1.1, 1.1), aimPitch: F.dead ? 0 : clamp(Math.atan2(ly, Math.hypot(lx, lz)), -.8, .8), breath: F.breath, boost: 0, roar: F.roarT > 0, flameCol: col.mid });
+    if (F.breath > .3 && F.d.mouth) { const mo = F.d.mouth, d = B.f; for (let i = Math.floor(30 * dt + r()); i > 0; i--) fx.fire.spawn(mo[0] + d[0] * 2.5 + (r() - .5), mo[1] + d[1] * 2.5 + (r() - .5), mo[2] + d[2] * 2.5 + (r() - .5), d[0] * 20 + (r() - .5) * 3, d[1] * 20 + 3 + r() * 3, d[2] * 20 + (r() - .5) * 3, .6 + r() * .5, 1, 4.5, col.core, col.end, .7, .8, -2); }
+  }
+  updateEncHud() {
+    const e = this.enc, el = $('enc'); if (!el) return; if (!e || e.state === 'choose') { el.style.display = 'none'; return; } el.style.display = 'block'; const v = e.v, F = this.foe;
+    $('encT').textContent = e.state === 'lost' ? v.name.toUpperCase() + ' HAS FALLEN' : e.state === 'won' ? v.name.toUpperCase() + ' IS SAVED' : 'DEFEND ' + v.name.toUpperCase();
+    $('encS').textContent = e.state === 'grace' ? 'RIVAL DRAGON ARRIVES IN ' + Math.ceil(e.t) + 's' : e.state === 'fight' ? 'SLAY THE RIVAL DRAGON BEFORE THE TOWN LOSES ' + Math.round(this.encCfg.lose * 100) + '%' : e.state === 'won' ? 'THE RIVAL DRAGON IS SLAIN' : 'THE RIVAL DRAGON ESCAPES';
+    $('encFoeW').style.display = F ? 'block' : 'none'; if (F) $('encFoe').style.width = clamp(F.hp / F.max, 0, 1) * 100 + '%';
+    const left = clamp(1 - v.pct / this.encCfg.lose, 0, 1); $('encTown').style.width = left * 100 + '%'; $('encTv').textContent = Math.round(v.pct * 100) + '% DAMAGED · LOST AT ' + Math.round(this.encCfg.lose * 100) + '%';
+  }
+
+  // ---------------- magic users defending attacked towns ----------------
+  resetMages() { this.mageBolts = []; this.world.mageOn = false; for (const m of this.world.mages) { m.alive = true; m.hp = 1; m.rise = 0; m.cd = 1.5 + Math.random() * 3; m.cast = 0; } }
+  mageAlert(v) {
+    let n = 0; for (const m of this.world.mages) if (m.v === v && m.alive) { n++; m.cd = 1.5 + Math.random() * 3; const C = FLAME[m.el]; this.fx.glow(m.x, m.y + 2, m.z, 9, C.core.map(q => q * 1.2), .5, .9, 16); this.fx.burst(m.x, m.y + 2, m.z, 10, C.mid, 14, 2); }
+    if (n) { this.sfx.bell(); this.hint(n + ' MAGES RISE TO DEFEND ' + v.name.toUpperCase() + ' — burn them down'); setTimeout(() => this.hint(''), 6000); }
+  }
+  killMage(m) {
+    if (!m.alive) return; m.alive = false; this.stats.mages = (this.stats.mages || 0) + 1; this.addScore(180); const C = FLAME[m.el];
+    this.fx.burst(m.x, m.y + 1.5, m.z, 16, C.core.map(q => q * 1.3), 18, 2.5); this.fx.glow(m.x, m.y + 2, m.z, 8, C.mid.map(q => q * 1.2), .3, .9, 14); this.fx.smokePuff(m.x, m.y + 2, m.z, 4, true);
+  }
+  mageBlast(P, BR) { for (const m of this.world.mages) if (m.alive && m.rise > .3 && Math.hypot(m.x - P[0], m.z - P[2]) < BR * 1.05 && Math.abs(m.y - P[1]) < BR * 1.2) this.killMage(m); }
+  castMage(m, D) {
+    const C = FLAME[m.el], sp = 88, o = [m.x + Math.cos(m.yaw) * .62, m.y + 3.9, m.z - Math.sin(m.yaw) * .62], dist = Math.hypot(D.pos[0] - o[0], D.pos[1] - o[1], D.pos[2] - o[2]), t = dist / sp, r = Math.random;
+    const aim = [D.pos[0] + D.vel[0] * t * .7 + (r() - .5) * dist * .02, D.pos[1] + D.vel[1] * t * .7 + (r() - .5) * dist * .02 + 3 * t * .3, D.pos[2] + D.vel[2] * t * .7 + (r() - .5) * dist * .02], d = V3.norm(V3.sub(aim, o));
+    this.mageBolts.push({ p: o, v: [d[0] * sp, d[1] * sp, d[2] * sp], t: 0, el: m.el, C }); m.cast = .5; this.sfx.twang();
+    this.fx.glow(o[0], o[1], o[2], 5, C.core.map(q => q * 1.3), .18, .9, 9); for (let n = 0; n < 8; n++) this.fx.spark(o[0], o[1], o[2], d[0] * 30 + (r() - .5) * 20, d[1] * 30 + (r() - .5) * 20, d[2] * 30 + (r() - .5) * 20, .3 + r() * .3, C.core.map(q => q * 1.3));
+  }
+  simMages(dt) {
+    const w = this.world, D = this.D, r = Math.random, fx = this.fx, M = w.mages; if (!M) return; let any = false;
+    const bf = D.breath > .3 && !D.dead ? this.headingVec(D.yaw, D.pitch) : null, S = this.settings;
+    for (let i = 0; i < M.length; i++) {
+      const m = M[i], v = m.v, act = v.mode === 'attack' && !v.lost && m.alive; if (act) m.rise = Math.min(1, m.rise + dt * 1.6); else if (!m.alive) m.rise = Math.max(0, m.rise - dt * 3.5); else m.rise = 0;
+      if (m.rise > 0) any = true;
+      if (m.rise > 0) { const bob = Math.sin(this.time * 2 + m.ph) * .05, sc = 1.7 * (m.alive ? m.rise : m.rise * .5); m.yaw = m.alive ? Math.atan2(D.pos[0] - m.x, D.pos[2] - m.z) : m.yaw; const col = w.mageTint[m.el]; w.mI[i * 4] = col[0]; w.mI[i * 4 + 1] = col[1]; w.mI[i * 4 + 2] = col[2]; M4.rotY(w.mM.subarray(i * 16, i * 16 + 16), m.yaw, [m.x, m.y + bob + (m.alive ? 0 : -.5 * (1 - m.rise)), m.z], sc, m.alive ? sc : .15, sc); }
+      else M4.rotY(w.mM.subarray(i * 16, i * 16 + 16), 0, [m.x, m.y - 50, m.z], 0, 0, 0);
+      if (!act || m.rise < 1) continue;
+      const C = FLAME[m.el]; m.cast = Math.max(0, m.cast - dt); if (r() < dt * 14) fx.glow(m.x + Math.cos(m.yaw) * .1, m.y + 4.1, m.z, 2.2, C.core.map(q => q * .9), .2, .6, 3.4);
+      if (bf) { const dx = m.x - D.pos[0], dy = m.y + 1.5 - D.pos[1], dz = m.z - D.pos[2], t = dx * bf[0] + dy * bf[1] + dz * bf[2]; if (t > 5 && t < 130) { const px = dx - bf[0] * t, py = dy - bf[1] * t, pz = dz - bf[2] * t; if (px * px + py * py + pz * pz < 15 * 15) { m.hp -= dt * 1.4; if (m.hp <= 0) { this.killMage(m); continue; } } } }
+      m.cd -= dt; const dist = Math.hypot(D.pos[0] - m.x, D.pos[1] - m.y, D.pos[2] - m.z);
+      if (S.def && !D.dead && m.cd <= 0 && dist < 430 && dist > 22 && D.pos[1] - m.y > -10) { this.castMage(m, D); m.cd = (2.6 + r() * 2.2) * Math.max(.6, 1 - .05 * this.level); }
+    }
+    w.mageOn = any; if (any) this.eng.updInst(w.mageMesh, w.mM, w.mI);
+    const L = this.mageBolts; for (let i = L.length - 1; i >= 0; i--) {
+      const q = L[i], C = q.C; q.t += dt; const sp = V3.len(q.v), want = V3.norm(V3.sub([D.pos[0], D.pos[1] - .5, D.pos[2]], q.p)), cur = V3.norm(q.v), k = clamp(dt * 1.1, 0, 1), nd = V3.norm([cur[0] + (want[0] - cur[0]) * k, cur[1] + (want[1] - cur[1]) * k, cur[2] + (want[2] - cur[2]) * k]);
+      if (!D.dead) q.v = [nd[0] * sp, nd[1] * sp, nd[2] * sp]; for (let a = 0; a < 3; a++) q.p[a] += q.v[a] * dt;
+      const P = q.p, hot = C.core.map(z => z * 1.3), j = (z) => (r() - .5) * z; fx.fire.spawn(P[0], P[1], P[2], 0, 0, 0, .07, 7, 7.5, C.mid.map(z => z * .3), C.mid.map(z => z * .2), .5, 0, 0, 2); fx.fire.spawn(P[0], P[1], P[2], 0, 0, 0, .08, 3, 3.3, hot, C.core, .95, 0, 0, 2);
+      for (let n = Math.floor(70 * dt + r()); n > 0; n--) { const nv = V3.norm(q.v); fx.fire.spawn(P[0] - nv[0] * r() * 3 + j(1.2), P[1] - nv[1] * r() * 3 + j(1.2), P[2] - nv[2] * r() * 3 + j(1.2), j(6), j(6) + 1, j(6), .3 + r() * .5, 1.3, 3, C.mid, C.end, .3, 1.5, -2); }
+      let del = q.t > 6 || P[1] < w.heightAt(P[0], P[2]);
+      if (!D.dead && Math.hypot(P[0] - D.pos[0], P[1] - D.pos[1], P[2] - D.pos[2]) < 4.4 * this.T.size + 1.5) { del = true; const dmg = { FIRE: 11, EARTH: 14, WATER: 9, AIR: 8 }[q.el]; this.damage(dmg); if (q.el === 'WATER') D.speed *= .88; if (q.el === 'AIR') { D.yaw += (r() - .5) * .35; this.shake = Math.max(this.shake, .8); } }
+      if (del) { fx.burst(P[0], P[1], P[2], 14, C.core.map(z => z * 1.3), 16, 2.5); fx.glow(P[0], P[1], P[2], 9, C.mid.map(z => z * 1.2), .22, .8, 14); L.splice(i, 1); }
+    }
   }
   // ---------------- ember orbs, levels, perks ----------------
   need(n) { return 1100 * (n + 1) * (1 + .3 * n); }
@@ -1987,16 +2178,16 @@ class Game {
   simDefenders(dt) {
     const w = this.world, D = this.D, S = this.settings; const on = S.def && !D.dead;
     for (const bl of w.ballistae) {
-      const b = bl.b; if (b.dead || b.collapse > .3) continue; const p = [b.x, b.y + 14.9 * b.s, b.z]; const dx = D.pos[0] - p[0], dy = D.pos[1] - p[1], dz = D.pos[2] - p[2], dist = Math.hypot(dx, dy, dz); bl.disabled = Math.max(0, bl.disabled - dt);
+      const b = bl.b; if (b.dead || b.collapse > .3) continue; const p = [b.x, b.y + 14.9 * b.s, b.z]; const fv = w.villages[b.vil], fr = !!fv && fv.mode === 'defend', TP = fr ? ((this.foe && !this.foe.dead && !this.foe.gone) ? this.foe.pos : null) : D.pos, TV = fr ? (this.foe ? this.foe.vel : [0, 0, 0]) : D.vel; if (!TP) continue; const dx = TP[0] - p[0], dy = TP[1] - p[1], dz = TP[2] - p[2], dist = Math.hypot(dx, dy, dz); bl.disabled = Math.max(0, bl.disabled - dt);
       const ty = Math.atan2(dx, dz), tp = Math.atan2(dy, Math.hypot(dx, dz)); bl.yaw += clamp(wrapA(ty - bl.yaw), -1.2 * dt, 1.2 * dt); bl.pitch += clamp(tp - bl.pitch, -1 * dt, 1 * dt); bl.pitch = clamp(bl.pitch, -.2, 1.2);
       const f = this.headingVec(bl.yaw, bl.pitch), r = V3.norm(V3.cross([0, 1, 0], f)), u = V3.cross(f, r); M4.basis(bl.model, r, u, f, p, b.s * 1.2, b.s * 1.2, b.s * 1.2);
-      bl.cd -= dt; if (on && this.alertOn && bl.disabled <= 0 && !b.burning && dist < 460 && dist > 30 && bl.cd <= 0 && Math.abs(wrapA(ty - bl.yaw)) < .12) {
-        bl.cd = (3.2 + Math.random() * 1.6) * Math.max(.55, 1 - .07 * this.level); const tt = dist / 105, sp = V3.len(D.vel), err = dist * .018 * (1 + sp / 70), aim = [D.pos[0] + D.vel[0] * tt * .85 + (Math.random() - .5) * err, D.pos[1] + D.vel[1] * tt * .85 + (Math.random() - .5) * err, D.pos[2] + D.vel[2] * tt * .85 + (Math.random() - .5) * err]; const dd = V3.norm(V3.sub(aim, p)); this.bolts.push({ p: [p[0] + dd[0] * 3, p[1] + dd[1] * 3, p[2] + dd[2] * 3], v: V3.mul(dd, 105), t: 0 }); this.sfx.twang(); this.fx.burst(p[0] + dd[0] * 4, p[1] + 1, p[2] + dd[2] * 4, 3, [1.5, 1.4, 1], 5, 1);
+      bl.cd -= dt; if ((fr || (on && this.alertOn)) && bl.disabled <= 0 && !b.burning && dist < 460 && dist > 30 && bl.cd <= 0 && Math.abs(wrapA(ty - bl.yaw)) < .12) {
+        bl.cd = (3.2 + Math.random() * 1.6) * Math.max(.55, 1 - .07 * this.level) * (fr ? 1.4 : 1); const tt = dist / 105, sp = V3.len(TV), err = dist * .018 * (1 + sp / 70), aim = [TP[0] + TV[0] * tt * .85 + (Math.random() - .5) * err, TP[1] + TV[1] * tt * .85 + (Math.random() - .5) * err, TP[2] + TV[2] * tt * .85 + (Math.random() - .5) * err]; const dd = V3.norm(V3.sub(aim, p)); this.bolts.push({ p: [p[0] + dd[0] * 3, p[1] + dd[1] * 3, p[2] + dd[2] * 3], v: V3.mul(dd, 105), t: 0, fr }); this.sfx.twang(); this.fx.burst(p[0] + dd[0] * 4, p[1] + 1, p[2] + dd[2] * 4, 3, [1.5, 1.4, 1], 5, 1);
       }
     }
-    for (let i = this.bolts.length - 1; i >= 0; i--) { const q = this.bolts[i]; q.t += dt; for (let k = 0; k < 3; k++) q.p[k] += q.v[k] * dt; q.v[1] -= 4 * dt; const dx = q.p[0] - D.pos[0], dy = q.p[1] - D.pos[1] - 1, dz = q.p[2] - D.pos[2]; let del = q.t > 6 || q.p[1] < w.heightAt(q.p[0], q.p[2]); if (!del && dx * dx + dy * dy + dz * dz < (4.2 * this.T.size) ** 2 && !D.dead) { this.damage(15); del = true; this.fx.burst(q.p[0], q.p[1], q.p[2], 10, [2, 1, .4], 12, 2.5); } if (del) this.bolts.splice(i, 1); }
+    for (let i = this.bolts.length - 1; i >= 0; i--) { const q = this.bolts[i]; q.t += dt; for (let k = 0; k < 3; k++) q.p[k] += q.v[k] * dt; q.v[1] -= 4 * dt; if (q.fr) { let d2 = q.t > 6 || q.p[1] < w.heightAt(q.p[0], q.p[2]); const F = this.foe; if (!d2 && F && !F.dead && !F.gone && V3.len(V3.sub(q.p, F.pos)) < F.rad) { this.hurtFoe(7); d2 = true; this.fx.burst(q.p[0], q.p[1], q.p[2], 8, [2, 1, .4], 12, 2); } if (d2) this.bolts.splice(i, 1); continue; } const dx = q.p[0] - D.pos[0], dy = q.p[1] - D.pos[1] - 1, dz = q.p[2] - D.pos[2]; let del = q.t > 6 || q.p[1] < w.heightAt(q.p[0], q.p[2]); if (!del && dx * dx + dy * dy + dz * dz < (4.2 * this.T.size) ** 2 && !D.dead) { this.damage(15); del = true; this.fx.burst(q.p[0], q.p[1], q.p[2], 10, [2, 1, .4], 12, 2.5); } if (del) this.bolts.splice(i, 1); }
   }
-  endGame(win) { if (this.mode !== 'play') return; this.mode = 'end'; try { document.exitPointerLock(); } catch (e) { } $('end').classList.add('on'); $('endT').textContent = win ? 'THE REALM BURNS' : 'THE DRAGON FALLS'; $('endT').style.color = win ? '#ffcf80' : '#ff7a6a'; const t = this.stats.time | 0; $('endP').innerHTML = `Score <b style="color:#fff">${this.score.toLocaleString()}</b> · ${this.stats.burned} buildings burned · ${this.stats.towers} towers felled · ${(t / 60) | 0}m ${t % 60}s`; if (win) this.sfx.bell(); }
+  endGame(win) { if (this.mode !== 'play') return; this.mode = 'end'; try { document.exitPointerLock(); } catch (e) { } $('end').classList.add('on'); $('endT').textContent = win ? (this.world.villages.every(v => v.saved) ? 'THE REALM IS SAVED' : 'THE REALM BURNS') : 'THE DRAGON FALLS'; $('endT').style.color = win ? '#ffcf80' : '#ff7a6a'; const t = this.stats.time | 0; $('endP').innerHTML = `Score <b style="color:#fff">${this.score.toLocaleString()}</b> · ${this.stats.burned} buildings burned · ${this.stats.towers} towers felled · ${this.stats.saved || 0} towns saved · ${this.stats.mages || 0} mages slain · ${(t / 60) | 0}m ${t % 60}s`; if (win) this.sfx.bell(); }
   // ---------------- camera, render ----------------
   updateCamera(dt) {
     const c = this.cam, D = this.D, S = this.dragon.S; let tgt, fwd;
@@ -2014,7 +2205,7 @@ class Game {
   }
   render() {
     const e = this.eng, gl = e.gl, w = this.world, c = this.cam, G = e.G; this.lights();
-    const list = w.drawList(c, this.time), dl = this.dragon.renderables(); const boltR = this.boltRenderable();
+    const list = w.drawList(c, this.time), dl = this.dragon.renderables(); if (this.foe && !this.foe.gone) for (const rr of this.foe.d.renderables()) dl.push(rr); const boltR = this.boltRenderable();
     if (this.q.shadows) { const D = this.D, fwd = this.mode === 'menu' ? [0, 0, 0] : V3.mul(this.B.f, 45); e.setShadowFocus([D.pos[0] + fwd[0], w.heightAt(D.pos[0], D.pos[2]) + 10, D.pos[2] + fwd[2]], 190); G.uShadowOn = 1; e.beginShadow(); for (const r of list) e.draw(r, 'shadow'); for (const r of dl) e.draw(r, 'shadow'); e.endShadow(); } else G.uShadowOn = 0;
     e.beginScene(); w.drawSky(c);
     for (const r of list) e.draw(r, 'main'); for (const r of dl) e.draw(r, 'main'); if (boltR) e.draw(boltR, 'main');
@@ -2037,19 +2228,21 @@ class Game {
     $('spd').textContent = `${Math.round(D.speed * 3.6)} KM/H · ${Math.round(D.pos[1] - this.world.heightAt(D.pos[0], D.pos[2]))} M AGL`; const wr = $('warn'); wr.style.display = this.warn ? 'block' : 'none'; wr.textContent = 'THE WILD LANDS — TURN BACK';
     this.world.villages.forEach((v, i) => { $('ob' + i).style.width = clamp(v.pct / .82, 0, 1) * 100 + '%'; $('op' + i).textContent = Math.min(100, Math.round(v.pct / .82 * 100)) + '%'; $('ov' + i).classList.toggle('done', v.razed); });
     const lv = this.level, lo = lv ? this.need(lv - 1) : 0, hi = this.need(lv); if ($('lvt')) { $('lvt').textContent = 'LEVEL ' + (lv + 1); $('lvb').style.width = clamp((this.score - lo) / (hi - lo), 0, 1) * 100 + '%'; }
-    this.mm = (this.mm || 0) + 1; this.drawMap();
+    this.updateEncHud(); this.mm = (this.mm || 0) + 1; this.drawMap();
   }
   drawMap() {
     const cv = $('mm'), g = cv.getContext('2d'), S = 300, R = 700, D = this.D; g.clearRect(0, 0, S, S); g.save(); g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 2, 0, TAU); g.clip(); g.translate(S / 2, S / 2); g.rotate(D.yaw); const k = S / 2 / R, P = (x, z) => [-(x - D.pos[0]) * k * -1 * -1, 0];
     const tp = (x, z) => { const dx = x - D.pos[0], dz = z - D.pos[2]; return [dx * k, -dz * k]; }; g.rotate(0);
     g.fillStyle = 'rgba(255,255,255,.05)'; for (const v of this.world.villages) { const [x, y] = tp(v.cx, v.cz); g.fillStyle = v.razed ? 'rgba(40,30,30,.9)' : `rgba(${200 + v.pct * 55},${160 - v.pct * 90},70,.45)`; g.beginPath(); g.arc(x, y, v.R * k, 0, TAU); g.fill(); g.fillStyle = '#fff'; g.font = '14px sans-serif'; g.fillText(v.name[0], x - 4, y + 5); for (const b of v.buildings) { if (b.burning) { const [bx, by] = tp(b.x, b.z); g.fillStyle = '#ff8a2a'; g.fillRect(bx - 1.5, by - 1.5, 3, 3); } else if (b.tower && !b.dead) { const [bx, by] = tp(b.x, b.z); g.fillStyle = '#ff4a4a'; g.fillRect(bx - 2, by - 2, 4, 4); } } }
     { const F = this.world.feat, mk = (o, col, hot) => { const [x, y] = tp(o.x, o.z), rr = Math.max(10, o.R * k * .32); g.fillStyle = col; g.beginPath(); g.moveTo(x, y - rr); g.lineTo(x + rr * .9, y + rr * .7); g.lineTo(x - rr * .9, y + rr * .7); g.closePath(); g.fill(); if (hot) { g.fillStyle = '#ff6a1a'; g.beginPath(); g.arc(x, y - rr * .2, 2.6, 0, TAU); g.fill(); } }; mk(F.snow, 'rgba(225,236,250,.55)'); mk(F.vol, 'rgba(120,70,56,.7)', 1); }
+    if (this.mageBolts) for (const m of this.world.mages) { if (!m.alive || m.rise < 1) continue; const [mx, my] = tp(m.x, m.z); if (mx * mx + my * my > (S / 2 - 8) ** 2) continue; g.fillStyle = '#c58aff'; g.beginPath(); g.arc(mx, my, 2.4, 0, TAU); g.fill(); }
+    if (this.foe && !this.foe.gone) { let [dx0, dy0] = tp(this.foe.pos[0], this.foe.pos[2]); const L0 = Math.hypot(dx0, dy0), M0 = S / 2 - 12; if (L0 > M0) { dx0 *= M0 / L0; dy0 *= M0 / L0; } g.fillStyle = '#ff2a2a'; g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.arc(dx0, dy0, 5.5, 0, TAU); g.fill(); g.stroke(); }
     g.restore(); g.fillStyle = '#ffe3a0'; g.beginPath(); g.moveTo(S / 2, S / 2 - 12); g.lineTo(S / 2 + 8, S / 2 + 9); g.lineTo(S / 2, S / 2 + 4); g.lineTo(S / 2 - 8, S / 2 + 9); g.fill();
   }
   loop(ts) {
     requestAnimationFrame((t) => this.loop(t)); let dt = (ts - this.last) / 1000; this.last = ts; if (!(dt > 0)) dt = .016; dt = Math.min(dt, .05); this.fpsAvg = lerp(this.fpsAvg, 1 / dt, .05);
     if (this.mode === 'play') { this.step(dt); this.updateCamera(dt); this.updateHud(dt); }
-    else if (this.mode === 'menu' || this.mode === 'end') { const D = this.D; this.time += dt; this.eng.G.uTime = this.time; D.pos[1] += Math.sin(this.time * .9) * .02; const B = this.basis(D.yaw, .05 + Math.sin(this.time * .5) * .04, Math.sin(this.time * .6) * .08); this.B = B; this.dragon.update(dt, { pos: D.pos, r: B.r, u: B.u, f: B.f, flapAmp: 1, flapFreq: .5, flight: .55, turn: 0, climb: 0, aimYaw: Math.sin(this.time * .4) * .5, aimPitch: .25 + Math.sin(this.time * .3) * .1, breath: 0, boost: 0, roar: false, flameCol: this.fx.fl.mid }); this.simBuildings(dt); this.updateCamera(dt); if (this.mode === 'menu') for (let i = 0; i < 0; i++); }
+    else if (this.mode === 'menu' || this.mode === 'end') { const D = this.D; this.time += dt; this.eng.G.uTime = this.time; D.pos[1] += Math.sin(this.time * .9) * .02; const B = this.basis(D.yaw, .05 + Math.sin(this.time * .5) * .04, Math.sin(this.time * .6) * .08); this.B = B; this.dragon.update(dt, { pos: D.pos, r: B.r, u: B.u, f: B.f, flapAmp: 1, flapFreq: .5, flight: .55, turn: 0, climb: 0, aimYaw: Math.sin(this.time * .4) * .5, aimPitch: .25 + Math.sin(this.time * .3) * .1, breath: 0, boost: 0, roar: false, flameCol: this.fx.fl.mid }); this.simBuildings(dt); this.updateCamera(dt); }
     else if (this.mode === 'pause' || this.mode === 'perk') { this.updateCamera(0); }
     if (this.mode !== 'pause' && this.mode !== 'perk') { this.simWorldFx(dt); this.fx.update(dt, (x, z) => this.world.heightAt(x, z)); }
     const D = this.D; this.sfx.update(dt, { speed: this.mode === 'play' ? D.speed : 20, breath: this.mode === 'play' ? D.breath : 0, fires: Math.min(10, (this.burningList || []).length), intensity: this.mode === 'play' ? clamp((this.burningList || []).length / 12 + (this.bolts.length ? .4 : 0) + D.breath * .3, 0, 1) : 0, menu: this.mode !== 'play', flapEdge: D.flapEdge, flapVol: .5 });
